@@ -101,6 +101,8 @@ class Trainer:
         epoch: int,
         global_step: int,
         sched: torch.optim.lr_scheduler.LambdaLR | None = None,
+        step_hook=None,
+        skip_batches: int = 0,
     ) -> tuple[int, list[float]]:
         rng = random.Random(self.tcfg.seed + epoch)
         order = list(range(len(examples)))
@@ -110,8 +112,11 @@ class Trainer:
             order = order[: self.tcfg.max_steps * bs]
         losses: list[float] = []
         self.model.train()
-        for start in range(0, len(order), bs):
-            batch = [examples[i] for i in order[start : start + bs]]
+        batches = [order[s : s + bs] for s in range(0, len(order), bs)]
+        for bi, batch_idx in enumerate(batches):
+            if bi < skip_batches:
+                continue  # already trained in a previous (partial) run [vss]
+            batch = [examples[i] for i in batch_idx]
             states = [ex.state for ex in batch]
             qs = [[q.as_request() for q in ex.questions] for ex in batch]
             targets = [build_targets(ex) for ex in batch]
@@ -134,6 +139,8 @@ class Trainer:
                     sched.step()
             losses.append(parts["total"])
             global_step += 1
+            if step_hook is not None:
+                step_hook(global_step, bi + 1)
             if global_step % self.tcfg.log_every == 0:
                 print(f"  epoch {epoch} step {global_step} loss {parts['total']:.4f}", flush=True)
         return global_step, losses
@@ -152,14 +159,20 @@ class Trainer:
         ckpt_dir = Path(tcfg.checkpoint_dir)
         ckpt_dir.mkdir(parents=True, exist_ok=True)
 
+        resume_batch = 0
         if resume_from:
             state = torch.load(resume_from, map_location=self.device)
             self.model.load_state_dict(state["model"])
             self.opt.load_state_dict(state["optimizer"])
-            start_epoch = state["epoch"] + 1  # saved epoch already completed
+            partial = state.get("partial", False)
+            # a mid-epoch checkpoint replays the remainder of its (partial)
+            # epoch; a post-epoch checkpoint continues with the next [vss]
+            start_epoch = state["epoch"] if partial else state["epoch"] + 1
+            resume_batch = state.get("batch_index", 0) if partial else 0
             global_step = state["global_step"]
             best_loss = state.get("best_loss", float("inf"))
-            print(f"resumed from {resume_from}: starting epoch {start_epoch}")
+            print(f"resumed from {resume_from}: starting epoch {start_epoch}"
+                  + (f" at batch {resume_batch}" if partial else ""), flush=True)
 
         sched = torch.optim.lr_scheduler.LambdaLR(
             self.opt,
@@ -170,9 +183,20 @@ class Trainer:
             sched.step()
 
         history: list[dict[str, Any]] = []
+        ckpt_every = 100  # steps between mid-epoch checkpoints [vss]
         for epoch in range(start_epoch, tcfg.epochs):
             t0 = time.time()
-            global_step, losses = self.train_epoch(self.train, epoch, global_step, sched)
+            steps_at_epoch_start = global_step
+
+            def hook(gs: int, batch_index: int, _epoch: int = epoch, _s0: int = steps_at_epoch_start) -> None:
+                if (gs - _s0) % ckpt_every == 0:
+                    self._checkpoint(ckpt_dir / "last.pt", _epoch, gs, best_loss, partial=True, batch_index=batch_index)
+
+            global_step, losses = self.train_epoch(
+                self.train, epoch, global_step, sched,
+                step_hook=hook, skip_batches=resume_batch,
+            )
+            resume_batch = 0  # only the first resumed epoch replays partially
             mean_loss = sum(losses) / max(1, len(losses))
             eval_loss = self.evaluate() if self.eval else None
             history.append(
@@ -213,7 +237,15 @@ class Trainer:
         return sum(losses) / max(1, len(losses))
 
     # ----------------------------------------------------------- checkpoint
-    def _checkpoint(self, path: Path, epoch: int, global_step: int, best_loss: float) -> None:
+    def _checkpoint(
+        self,
+        path: Path,
+        epoch: int,
+        global_step: int,
+        best_loss: float,
+        partial: bool = False,
+        batch_index: int = 0,
+    ) -> None:
         torch.save(
             {
                 "model": self.model.state_dict(),
@@ -221,6 +253,8 @@ class Trainer:
                 "epoch": epoch,
                 "global_step": global_step,
                 "best_loss": best_loss,
+                "partial": partial,
+                "batch_index": batch_index,
                 "seed": self.tcfg.seed,
                 "config": self.config.to_dict(),
             },
