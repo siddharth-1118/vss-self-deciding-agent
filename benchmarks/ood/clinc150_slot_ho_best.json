@@ -1,0 +1,97 @@
+{
+  "model": "runs/clinc150-slot-ho/best.pt",
+  "protocol": "full official option schema; threshold from validation split; seed 42",
+  "n_test": 5500,
+  "n_inscope": 4500,
+  "n_oos": 1000,
+  "inscope_accuracy_full_schema": 0.7398,
+  "oos_detection_auroc": 0.8003,
+  "validation_threshold": 0.3306,
+  "coverage_inscope": 0.9556,
+  "selective_accuracy_inscope": 0.7649,
+  "oos_abstention_recall": 0.28,
+  "false_abstention_rate_inscope": 0.0444,
+  "ece_answered_inscope": 0.0403,
+  "risk_coverage": [
+    {
+      "coverage": 0.0002,
+      "selective_accuracy": 1.0
+    },
+    {
+      "coverage": 0.0502,
+      "selective_accuracy": 0.9956
+    },
+    {
+      "coverage": 0.1002,
+      "selective_accuracy": 0.9956
+    },
+    {
+      "coverage": 0.1502,
+      "selective_accuracy": 0.9941
+    },
+    {
+      "coverage": 0.2002,
+      "selective_accuracy": 0.9867
+    },
+    {
+      "coverage": 0.2502,
+      "selective_accuracy": 0.9858
+    },
+    {
+      "coverage": 0.3002,
+      "selective_accuracy": 0.9852
+    },
+    {
+      "coverage": 0.3502,
+      "selective_accuracy": 0.9778
+    },
+    {
+      "coverage": 0.4002,
+      "selective_accuracy": 0.9711
+    },
+    {
+      "coverage": 0.4502,
+      "selective_accuracy": 0.9625
+    },
+    {
+      "coverage": 0.5002,
+      "selective_accuracy": 0.948
+    },
+    {
+      "coverage": 0.5502,
+      "selective_accuracy": 0.9334
+    },
+    {
+      "coverage": 0.6002,
+      "selective_accuracy": 0.9189
+    },
+    {
+      "coverage": 0.6502,
+      "selective_accuracy": 0.9005
+    },
+    {
+      "coverage": 0.7002,
+      "selective_accuracy": 0.8781
+    },
+    {
+      "coverage": 0.7502,
+      "selective_accuracy": 0.8543
+    },
+    {
+      "coverage": 0.8002,
+      "selective_accuracy": 0.8367
+    },
+    {
+      "coverage": 0.8502,
+      "selective_accuracy": 0.8212
+    },
+    {
+      "coverage": 0.9002,
+      "selective_accuracy": 0.7914
+    },
+    {
+      "coverage": 0.9502,
+      "selective_accuracy": 0.768
+    }
+  ]
+}

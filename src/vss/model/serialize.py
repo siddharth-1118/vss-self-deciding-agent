@@ -59,6 +59,12 @@ def serialize_question(question: dict[str, Any]) -> str:
 
     Field order is fixed (id, type, options, min, max) so identical questions
     always serialize identically regardless of input key order.
+
+    With `header_only_choice=True`, choice blocks omit the option list from
+    the SERIALIZED TEXT: the head enforces schema membership via its slot
+    mask, so emitting hundreds of option tokens into the sequence only
+    dilutes the question's mean-pooled representation [vss — added after the
+    full-schema dilution experiment, see benchmarks/clinc150].
     """
     qtype = question.get("type")
     if qtype not in {"choice", "noul", "score"}:
@@ -71,7 +77,8 @@ def serialize_question(question: dict[str, Any]) -> str:
         options = question.get("options")
         if not isinstance(options, list) or not options:
             raise ValueError("choice question requires a non-empty options list")
-        fields.append("options=[" + ",".join(str(o) for o in options) + "]")
+        if not question.get("header_only_choice"):
+            fields.append("options=[" + ",".join(str(o) for o in options) + "]")
     if qtype == "score":
         if "min" not in question or "max" not in question:
             raise ValueError("score question requires min and max")

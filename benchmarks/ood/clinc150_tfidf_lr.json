@@ -1,0 +1,7 @@
+{
+  "baseline": "tfidf_lr",
+  "n_test": 5500,
+  "inscope_accuracy_full_schema": 0.8882,
+  "oos_detection_auroc": 0.8893,
+  "ece_answered_inscope": 0.2968
+}

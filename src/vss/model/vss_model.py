@@ -52,7 +52,14 @@ class VSSModel(nn.Module):
         device: torch.device | str = "cpu",
     ) -> dict:
         specs = [[QuestionSpec.from_dict(q) for q in qs] for qs in questions_list]
-        enc = self.vss_encoder.encode_batch(states, questions_list, device)
+        if not getattr(self.config, "header_only_choice", False):
+            serial_questions = questions_list
+        else:
+            # mark choice blocks as header-only for serialization [vss]
+            serial_questions = [
+                [{**q, "header_only_choice": True} for q in qs] for qs in questions_list
+            ]
+        enc = self.vss_encoder.encode_batch(states, serial_questions, device)
         H = self.encoder(enc["token_ids"])
         qvecs = []
         for b, spans in enumerate(enc["spans"]):
