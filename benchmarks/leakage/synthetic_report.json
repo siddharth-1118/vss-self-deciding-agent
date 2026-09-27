@@ -1,0 +1,116 @@
+{
+  "train_file": "data/generated/train.jsonl",
+  "test_file": "data/generated/eval.jsonl",
+  "n_train": 2400,
+  "n_test": 480,
+  "exact_duplicates": {
+    "train_exact_internal_dups": 490,
+    "test_exact_internal_dups": 50,
+    "train_soft_internal_dups": 699,
+    "test_soft_internal_dups": 90,
+    "cross_split_exact_dup_test_examples": 75,
+    "cross_split_answer_agnostic_dup_test_examples": 91
+  },
+  "near_duplicates_cross_split": {
+    "j_threshold": 0.7,
+    "n_test": 480,
+    "mean_best_match_jaccard": 0.914990348041684,
+    "p50_best": 0.9473684210526315,
+    "p95_best": 1.0,
+    "fraction_above_threshold": 0.9291666666666667,
+    "n_above_threshold": 446,
+    "examples": [
+      {
+        "test_index": 0,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 1,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 2,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 3,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 4,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 5,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 6,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 7,
+        "jaccard": 0.875
+      },
+      {
+        "test_index": 8,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 9,
+        "jaccard": 0.938
+      },
+      {
+        "test_index": 10,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 11,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 12,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 13,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 14,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 15,
+        "jaccard": 0.85
+      },
+      {
+        "test_index": 16,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 17,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 18,
+        "jaccard": 1.0
+      },
+      {
+        "test_index": 19,
+        "jaccard": 1.0
+      }
+    ]
+  },
+  "question_templates": {
+    "question_id_overlap": [
+      "department",
+      "refund_requested",
+      "urgency"
+    ],
+    "question_id_overlap_fraction": 1.0,
+    "exact_schema_rows_in_both": 604,
+    "exact_schema_rows_in_both_fraction": 0.9950576606260296,
+    "note": "shared (id,type,options) tuples are EXPECTED for a decision API (the deployed API declares the same options at train and test time); the leakage that matters is STATE-side template sharing"
+  }
+}
