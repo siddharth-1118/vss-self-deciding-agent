@@ -1,0 +1,37 @@
+# VSS-Large: ~500M-1B params. Only after Base experiments validate scaling.
+model:
+  hidden_size: 1024
+  layers: 20
+  heads: 16
+  kv_heads: 4
+  intermediate_size: 4096
+  max_sequence_length: 4096
+  dropout: 0.0
+  vocab_size: 32768
+  hash_buckets: 32768
+  score_bins: 64
+  rope_theta: 10000.0
+  pad_token_id: 0
+
+inference:
+  abstain_threshold: 0.55
+  enable_abstention: true
+  confidence_mode: blend
+  deterministic: true
+
+training:
+  seed: 13
+  batch_size: 8
+  lr: 1.5e-4
+  weight_decay: 0.01
+  warmup_steps: 800
+  epochs: 3
+  clip_grad_norm: 1.0
+  precision: bf16
+  scheduler: cosine
+  loss_weights:
+    choice: 1.0
+    noul: 1.0
+    score: 1.0
+  score_ordinal_weight: 0.25
+  checkpoint_dir: runs/large

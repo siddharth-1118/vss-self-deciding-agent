@@ -1,0 +1,41 @@
+# VSS-Prototype: 10M-50M params. Proves the full pipeline end-to-end.
+model:
+  hidden_size: 256
+  layers: 6
+  heads: 8
+  kv_heads: 8          # GQA: set < heads to share K/V projections
+  intermediate_size: 1024
+  max_sequence_length: 4096
+  dropout: 0.0
+  vocab_size: 24576
+  hash_buckets: 8192   # OOV word -> deterministic FNV-1a hash bucket
+  score_bins: 64
+  rope_theta: 10000.0
+  pad_token_id: 0
+
+inference:
+  abstain_threshold: 0.55
+  enable_abstention: true
+  confidence_mode: blend     # max_prob | calibrated_head | blend
+  deterministic: true
+
+training:
+  seed: 13
+  batch_size: 32
+  grad_accum: 1
+  lr: 3.0e-4
+  weight_decay: 0.01
+  warmup_steps: 100
+  max_steps: null
+  epochs: 5
+  clip_grad_norm: 1.0
+  precision: fp32            # fp32 | bf16 | fp16 (autocast; CPU stays fp32)
+  scheduler: cosine
+  loss_weights:              # lambda_1..3 for the multi-task objective
+    choice: 1.0
+    noul: 1.0
+    score: 1.0
+  score_ordinal_weight: 0.25 # auxiliary ordinal-CE weight for Score questions
+  log_every: 50
+  eval_every: 300
+  checkpoint_dir: runs/prototype

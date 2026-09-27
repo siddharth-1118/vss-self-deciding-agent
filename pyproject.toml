@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vss"
+version = "0.1.0"
+description = "VSS: a System-One decision intelligence model — state -> typed questions -> parallel probabilistic decisions."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "VSS contributors" }]
+keywords = ["decision-model", "calibration", "transformer", "machine-learning"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "numpy>=1.24",
+  "torch>=2.1",
+  "pydantic>=2.5",
+  "pyyaml>=6.0",
+  "safetensors>=0.4",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+serve = ["fastapi>=0.104", "uvicorn>=0.24"]
+onnx = ["onnx>=1.15", "onnxruntime>=1.17"]
+plots = ["matplotlib>=3.7"]
+dev = ["pytest>=7.4", "fastapi>=0.104", "uvicorn>=0.24", "httpx>=0.25"]
+
+[project.scripts]
+vss = "vss.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

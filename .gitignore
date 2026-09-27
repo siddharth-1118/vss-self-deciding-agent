@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# VSS artifacts
+runs/
+checkpoints/
+data/generated/
+data/raw/
+*.pt
+*.ckpt
+*.safetensors
+!tests/fixtures/*.safetensors
+.coverage
+htmlcov/
+.DS_Store

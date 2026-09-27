@@ -1,0 +1,37 @@
+# VSS-Base: ~200-300M params. Do not train before the prototype milestone succeeds.
+model:
+  hidden_size: 768
+  layers: 16
+  heads: 12
+  kv_heads: 4
+  intermediate_size: 3072
+  max_sequence_length: 4096
+  dropout: 0.0
+  vocab_size: 32768
+  hash_buckets: 32768
+  score_bins: 64
+  rope_theta: 10000.0
+  pad_token_id: 0
+
+inference:
+  abstain_threshold: 0.55
+  enable_abstention: true
+  confidence_mode: blend
+  deterministic: true
+
+training:
+  seed: 13
+  batch_size: 16
+  lr: 2.0e-4
+  weight_decay: 0.01
+  warmup_steps: 600
+  epochs: 3
+  clip_grad_norm: 1.0
+  precision: bf16
+  scheduler: cosine
+  loss_weights:
+    choice: 1.0
+    noul: 1.0
+    score: 1.0
+  score_ordinal_weight: 0.25
+  checkpoint_dir: runs/base

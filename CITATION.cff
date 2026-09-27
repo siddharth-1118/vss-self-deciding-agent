@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use VSS, please cite it as below."
+title: "VSS: an open-source System-One decision intelligence model"
+type: software
+authors:
+  - name: "VSS contributors"
+repository-code: "https://github.com/vss-model/vss"
+abstract: "VSS is a trainable decision model that answers multiple typed questions (choice, noul, score) about a text/JSON state in a single transformer forward pass, with schema-constrained outputs, probability distributions, and calibrated confidence."
+keywords:
+  - decision-model
+  - calibration
+  - transformer
+  - abstention
+license: MIT
+version: 0.1.0
+date-released: "2026-09-27"
