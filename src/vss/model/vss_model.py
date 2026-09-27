@@ -41,6 +41,7 @@ class VSSModel(nn.Module):
             dim=config.hidden_size,
             num_option_slots=config.option_slots,
             score_bins=config.score_bins,
+            use_refine=getattr(config, "use_refine_choice", True),
         )
 
     # ------------------------------------------------------------ inference

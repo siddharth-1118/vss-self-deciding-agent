@@ -1,0 +1,12 @@
+{
+  "source": "clinc/clinc_oos (imbalanced)",
+  "splits": {
+    "train": 10625,
+    "validation": 3100,
+    "test": 5500
+  },
+  "n_intents": 151,
+  "training_options_per_example": 15,
+  "eval_options": 151,
+  "note": "training uses subset schemas; evaluation uses the full official option set"
+}

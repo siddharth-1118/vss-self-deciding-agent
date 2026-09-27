@@ -72,15 +72,22 @@ class ChoiceHead(nn.Module):
 
     Options map to vocabulary slots by deterministic hashing so any option
     set works without retraining; an option-embedding table provides semantic
-    smoothing for frequently seen options.
+    smoothing for frequently seen options. When `use_refine=False` (slot-CE
+    training regime) the head is the pure slot projection, keeping train and
+    eval scoring paths identical.
     """
 
-    def __init__(self, dim: int, num_slots: int = 1024) -> None:
+    def __init__(self, dim: int, num_slots: int = 1024, use_refine: bool = True) -> None:
         super().__init__()
         self.num_slots = num_slots
+        self.use_refine = use_refine
         self.proj = nn.Linear(dim, num_slots)
         self.option_emb = nn.Embedding(num_slots, dim)
         self.option_mlp = nn.Sequential(nn.Linear(dim * 2, dim), nn.GELU(), nn.Linear(dim, 1))
+        if not use_refine:
+            # keep parameters out of the state dict entirely for slot mode
+            del self.option_emb
+            del self.option_mlp
         # learned abstain logit [vss]: trained against ABSTAIN targets so the
         # model can express "none of the declared options" during training;
         # at inference abstention is threshold-driven (inference config).
@@ -96,10 +103,12 @@ class ChoiceHead(nn.Module):
         return fnv1a(("opt:" + option).encode("utf-8")) % self.num_slots
 
     def logits_for_options(self, qvec: torch.Tensor, options: list[str]) -> torch.Tensor:
-        """Return [B?, num_options] logits for exactly the declared options."""
+        """Return [N, num_options] logits for exactly the declared options."""
         slots = torch.tensor([self.option_slot(o) for o in options], device=qvec.device)
         slot_logits = self.proj(qvec)  # [N, num_slots]
         shared = slot_logits[:, slots]  # [N, num_options]
+        if not self.use_refine:
+            return shared
         emb = self.option_emb(slots)  # [num_options, D]
         n = qvec.shape[0]
         pair = torch.cat(
@@ -181,10 +190,10 @@ class DecisionHeads(nn.Module):
 
     TYPE_INDEX = {"choice": 0, "noul": 1, "score": 2}
 
-    def __init__(self, dim: int, num_option_slots: int, score_bins: int) -> None:
+    def __init__(self, dim: int, num_option_slots: int, score_bins: int, use_refine: bool = True) -> None:
         super().__init__()
         self.adapter = QuestionAdapter(dim)
-        self.choice = ChoiceHead(dim, num_option_slots)
+        self.choice = ChoiceHead(dim, num_option_slots, use_refine=use_refine)
         self.noul = NoulHead(dim)
         self.score = ScoreHead(dim, score_bins)
         self.calibration = CalibrationHead(dim)

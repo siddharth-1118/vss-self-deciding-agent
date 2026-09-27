@@ -30,6 +30,10 @@ class ModelConfig:
     hash_buckets: int = 8192  # [vss] OOV words hashed into extra buckets
     score_bins: int = 64  # ordinal bins for Score heads [vss]
     option_slots: int = 1024  # shared choice-option slots [vss]
+    # [vss] slot-CE regime: score option slots directly without the per-pair
+    # option-refinement MLP. Makes train/eval scoring paths identical so
+    # full-schema ranking consistency is trained explicitly.
+    use_refine_choice: bool = True
     rope_theta: float = 10000.0
     pad_token_id: int = 0
 

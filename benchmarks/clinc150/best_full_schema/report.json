@@ -1,0 +1,16 @@
+{
+  "model": "runs/clinc150/best_exported",
+  "data": "data/clinc150/test.jsonl",
+  "sampling": "seeded subsample seed=42",
+  "n_examples": 1000,
+  "accuracy": 0.0,
+  "macro_f1": 0.0,
+  "abstain_rate": 1.0,
+  "ece": 0.2245894,
+  "brier": 0.058731620219999926,
+  "nll": 0.2617370452795115,
+  "throughput_examples_per_s": 19.48961903177994,
+  "batched_forward_passes": 63,
+  "device": "cpu",
+  "torch_threads": 6
+}

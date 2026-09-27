@@ -1,0 +1,17 @@
+{
+  "baseline": "tfidf_lr",
+  "data": "data\\clinc150",
+  "n_train": 10625,
+  "n_test": 1000,
+  "sampling": "seeded subsample seed=42",
+  "accuracy": 0.753,
+  "macro_f1": 0.7901488910087877,
+  "ece": 0.2427945599619348,
+  "brier": 0.19268830066401177,
+  "nll": 0.5795346237633228,
+  "fit_seconds": 10.01,
+  "infer_seconds": 0.02,
+  "throughput_examples_per_s": 49956.3,
+  "invalid_label_predictions": 0,
+  "n_classes": 151
+}

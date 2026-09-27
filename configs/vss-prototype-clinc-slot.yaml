@@ -1,0 +1,45 @@
+# VSS-Prototype on CLINC150, slot-CE regime (use_refine_choice: false).
+# Trains the pure slot projection over all 151 intents -> global ranking
+# consistency is trained explicitly. Evaluation identical to the refine run.
+model:
+  hidden_size: 256
+  layers: 6
+  heads: 8
+  kv_heads: 8
+  intermediate_size: 1024
+  max_sequence_length: 4096
+  dropout: 0.1
+  vocab_size: 16384
+  hash_buckets: 8192
+  score_bins: 64
+  option_slots: 1024
+  use_refine_choice: false
+  rope_theta: 10000.0
+  pad_token_id: 0
+
+inference:
+  abstain_threshold: 0.55
+  enable_abstention: true
+  confidence_mode: blend
+  deterministic: true
+
+training:
+  seed: 13
+  batch_size: 32
+  grad_accum: 1
+  lr: 3.0e-4
+  weight_decay: 0.01
+  warmup_steps: 150
+  max_steps: null
+  epochs: 8
+  clip_grad_norm: 1.0
+  precision: fp32
+  scheduler: cosine
+  loss_weights:
+    choice: 1.0
+    noul: 1.0
+    score: 1.0
+  score_ordinal_weight: 0.25
+  log_every: 100
+  eval_every: 300
+  checkpoint_dir: runs/clinc150-slot

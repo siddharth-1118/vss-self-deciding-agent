@@ -1,0 +1,12 @@
+{
+  "source": "legacy-datasets/banking77",
+  "splits": {
+    "train": 9079,
+    "validation": 924,
+    "test": 3080
+  },
+  "n_labels": 77,
+  "training_options_per_example": 15,
+  "eval_options": 77,
+  "note": "official splits; validation carved from train (stratified, seed=7)"
+}
