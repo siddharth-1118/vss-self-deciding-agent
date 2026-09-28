@@ -1,0 +1,185 @@
+{
+  "model": "runs/clinc150-slot-ho/final",
+  "data": "data/clinc150/test.jsonl",
+  "n_probes": 16,
+  "reps": 5,
+  "batch_size_C": 16,
+  "torch_threads": 6,
+  "warm": {
+    "N=1": {
+      "A": {
+        "p50": 0.0986,
+        "p95": 0.1,
+        "p99": 0.1,
+        "min": 0.0962
+      },
+      "B": {
+        "p50": 0.1991,
+        "p95": 0.1997,
+        "p99": 0.1997,
+        "min": 0.188,
+        "extrapolated": false
+      },
+      "C": {
+        "p50": 0.0688,
+        "p95": 0.0728,
+        "p99": 0.0728,
+        "min": 0.0667
+      },
+      "speedup_A_vs_B_p50": 2.02,
+      "speedup_A_vs_C_p50": 0.7
+    },
+    "N=5": {
+      "A": {
+        "p50": 0.2391,
+        "p95": 0.2406,
+        "p99": 0.2406,
+        "min": 0.2337
+      },
+      "B": {
+        "p50": 0.9982,
+        "p95": 1.0054,
+        "p99": 1.0054,
+        "min": 0.9806,
+        "extrapolated": false
+      },
+      "C": {
+        "p50": 0.3579,
+        "p95": 0.3625,
+        "p99": 0.3625,
+        "min": 0.356
+      },
+      "speedup_A_vs_B_p50": 4.17,
+      "speedup_A_vs_C_p50": 1.5
+    },
+    "N=10": {
+      "A": {
+        "p50": 0.4273,
+        "p95": 0.44,
+        "p99": 0.44,
+        "min": 0.3968
+      },
+      "B": {
+        "p50": 2.0191,
+        "p95": 2.0723,
+        "p99": 2.0723,
+        "min": 1.9745,
+        "extrapolated": false
+      },
+      "C": {
+        "p50": 0.7183,
+        "p95": 0.7269,
+        "p99": 0.7269,
+        "min": 0.7056
+      },
+      "speedup_A_vs_B_p50": 4.73,
+      "speedup_A_vs_C_p50": 1.68
+    },
+    "N=20": {
+      "A": {
+        "p50": 0.7931,
+        "p95": 0.8039,
+        "p99": 0.8039,
+        "min": 0.7649
+      },
+      "B": {
+        "p50": 4.078,
+        "p95": 4.0841,
+        "p99": 4.0841,
+        "min": 3.9685,
+        "extrapolated": false
+      },
+      "C": {
+        "p50": 1.4599,
+        "p95": 1.4612,
+        "p99": 1.4612,
+        "min": 1.4276
+      },
+      "speedup_A_vs_B_p50": 5.14,
+      "speedup_A_vs_C_p50": 1.84
+    },
+    "N=50": {
+      "A": {
+        "p50": 1.9557,
+        "p95": 1.9652,
+        "p99": 1.9652,
+        "min": 1.8991
+      },
+      "B": {
+        "p50": 10.0612,
+        "p95": 10.2434,
+        "p99": 10.2434,
+        "min": 9.9197,
+        "extrapolated": false
+      },
+      "C": {
+        "p50": 3.5703,
+        "p95": 3.6413,
+        "p99": 3.6413,
+        "min": 3.5575
+      },
+      "speedup_A_vs_B_p50": 5.14,
+      "speedup_A_vs_C_p50": 1.83
+    },
+    "N=100": {
+      "A": {
+        "p50": 4.0433,
+        "p95": 4.0814,
+        "p99": 4.0814,
+        "min": 3.9872
+      },
+      "B": {
+        "p50": 20.1224,
+        "p95": 20.4868,
+        "p99": 20.4868,
+        "min": 19.8394,
+        "extrapolated": true
+      },
+      "C": {
+        "p50": 7.14,
+        "p95": 7.2414,
+        "p99": 7.2414,
+        "min": 7.0715
+      },
+      "speedup_A_vs_B_p50": 4.98,
+      "speedup_A_vs_C_p50": 1.77
+    },
+    "N=200": {
+      "A": {
+        "p50": 8.9973,
+        "p95": 9.4169,
+        "p99": 9.4169,
+        "min": 8.8494
+      },
+      "B": {
+        "p50": 40.2448,
+        "p95": 40.9736,
+        "p99": 40.9736,
+        "min": 39.6788,
+        "extrapolated": true
+      },
+      "C": {
+        "p50": 14.4674,
+        "p95": 14.5449,
+        "p99": 14.5449,
+        "min": 14.389
+      },
+      "speedup_A_vs_B_p50": 4.47,
+      "speedup_A_vs_C_p50": 1.61
+    }
+  },
+  "cold": {
+    "A_N200_first_call_s": 2.3606
+  },
+  "methodA_accuracy_by_N": {
+    "1": 0.6875,
+    "5": 0.5625,
+    "10": 0.5625,
+    "20": 0.5625,
+    "50": 0.25,
+    "100": 0.1875,
+    "200": 0.0625
+  },
+  "note": "warm = after 1 warmup call; cold = first timed call after model load (measured once at N=200). A = one co-asked request; B = N solo requests; C = N solo requests batched 16.",
+  "methodA_accuracy_note": "n_probes=16 -> accuracy column is noisy (one flip = 6.25 pts); authoritative interference numbers are in benchmarks/interference/ (300 probes)"
+}
