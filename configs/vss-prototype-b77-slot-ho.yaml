@@ -1,0 +1,47 @@
+# VSS-Prototype on Banking77: slot-CE + header-only choice blocks [vss].
+# Same recipe as the winning CLINC150 run (identical backbone, seed 13);
+# 77 intents instead of 151. Question blocks carry no option text, so
+# train and full-schema evaluation sequences match.
+model:
+  hidden_size: 256
+  layers: 6
+  heads: 8
+  kv_heads: 8
+  intermediate_size: 1024
+  max_sequence_length: 4096
+  dropout: 0.1
+  vocab_size: 16384
+  hash_buckets: 8192
+  score_bins: 64
+  option_slots: 1024
+  use_refine_choice: false
+  header_only_choice: true
+  rope_theta: 10000.0
+  pad_token_id: 0
+
+inference:
+  abstain_threshold: 0.55
+  enable_abstention: true
+  confidence_mode: blend
+  deterministic: true
+
+training:
+  seed: 13
+  batch_size: 32
+  grad_accum: 1
+  lr: 3.0e-4
+  weight_decay: 0.01
+  warmup_steps: 150
+  max_steps: null
+  epochs: 8
+  clip_grad_norm: 1.0
+  precision: fp32
+  scheduler: cosine
+  loss_weights:
+    choice: 1.0
+    noul: 1.0
+    score: 1.0
+  score_ordinal_weight: 0.25
+  log_every: 100
+  eval_every: 300
+  checkpoint_dir: runs/banking77-slot-ho

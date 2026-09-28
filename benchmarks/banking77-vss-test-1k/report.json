@@ -1,0 +1,16 @@
+{
+  "model": "runs/banking77-slot-ho/final",
+  "data": "data/banking77/test.jsonl",
+  "sampling": "seeded subsample seed=42",
+  "n_examples": 1000,
+  "accuracy": 0.724,
+  "macro_f1": 0.7374453790952924,
+  "abstain_rate": 0.164,
+  "ece": 0.12306039999999979,
+  "brier": 0.1151537915000001,
+  "nll": 0.36297003265161387,
+  "throughput_examples_per_s": 165.72525606331055,
+  "batched_forward_passes": 63,
+  "device": "cpu",
+  "torch_threads": 6
+}

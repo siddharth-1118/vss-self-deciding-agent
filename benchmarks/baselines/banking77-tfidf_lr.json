@@ -1,0 +1,17 @@
+{
+  "baseline": "tfidf_lr",
+  "data": "data\\banking77",
+  "n_train": 9079,
+  "n_test": 1000,
+  "sampling": "seeded subsample seed=42",
+  "accuracy": 0.87,
+  "macro_f1": 0.8693443890662433,
+  "ece": 0.24768601736594803,
+  "brier": 0.156048178931985,
+  "nll": 0.4717630915131287,
+  "fit_seconds": 5.16,
+  "infer_seconds": 0.02,
+  "throughput_examples_per_s": 47861.5,
+  "invalid_label_predictions": 0,
+  "n_classes": 77
+}

@@ -25,6 +25,7 @@ import torch  # noqa: E402
 from vss.api import VSS  # noqa: E402
 from vss.data.schema import load_jsonl  # noqa: E402
 from vss.eval.metrics import accuracy, f1_scores  # noqa: E402
+from vss.inference.batching import run_batch  # noqa: E402
 from vss.model.calibration import brier_score, expected_calibration_error, nll  # noqa: E402
 
 
@@ -70,7 +71,15 @@ def main() -> int:
         chunk = examples[i : i + bs]
         states = [ex.state for ex in chunk]
         qs = [[q.as_request() for q in ex.questions] for ex in chunk]
-        results = model.decide_batch(states, qs, batch_size=bs)
+        results = run_batch(
+            model.model,
+            states,
+            qs,
+            abstain_threshold=model.inference_cfg.abstain_threshold,
+            enable_abstention=model.inference_cfg.enable_abstention,
+            confidence_mode=model.inference_cfg.confidence_mode,
+            device="cpu",
+        )
         n_forward += 1
         for ex, res in zip(chunk, results):
             q = ex.questions[0]
