@@ -1,0 +1,28 @@
+{
+  "model": "runs/clinc150-slot-ho/best.pt",
+  "data": "data/clinc150/test.jsonl",
+  "n_examples": 1000,
+  "seed": 42,
+  "n_options": 151,
+  "accuracy_by_perturbation": {
+    "clean": 0.634,
+    "lower": 0.634,
+    "upper": 0.634,
+    "typo": 0.546,
+    "drop_word": 0.53,
+    "dup_word": 0.627,
+    "punct": 0.599,
+    "whitespace": 0.634
+  },
+  "delta_vs_clean": {
+    "lower": 0.0,
+    "upper": 0.0,
+    "typo": -0.088,
+    "drop_word": -0.104,
+    "dup_word": -0.007,
+    "punct": -0.035,
+    "whitespace": 0.0
+  },
+  "mean_abs_delta": 0.0334,
+  "note": "deterministic perturbations only (no LLM paraphrase); each perturbation instance derived from a stable per-string seed so re-runs are reproducible"
+}
