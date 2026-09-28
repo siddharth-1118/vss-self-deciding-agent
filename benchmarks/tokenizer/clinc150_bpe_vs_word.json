@@ -1,0 +1,15 @@
+{
+  "comparison": "identical CLINC150 slot-ho recipe (seed 13); only tokenizer differs",
+  "bpe_trained": {
+    "clean": 0.522,
+    "typo": 0.463,
+    "drop_word": 0.407
+  },
+  "word_hash_reference": {
+    "clean": 0.634,
+    "typo": 0.546,
+    "drop_word": 0.53
+  },
+  "note": "reference run used n=1000 seed 42 test subsample \u2014 same protocol",
+  "conclusion": "BPE clean accuracy delta vs word+hash: -0.1120 (typo delta -0.0830, drop_word delta -0.1230)"
+}

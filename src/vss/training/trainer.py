@@ -76,10 +76,16 @@ class Trainer:
         from ..model.tokenizer import VSSTokenizer
 
         if self.model.tokenizer is None:
-            tok = VSSTokenizer(
-                vocab_size=self.config.model.vocab_size,
-                hash_buckets=self.config.model.hash_buckets,
-            )
+            tok: VSSTokenizer
+            if getattr(self.config.model, "tokenizer_type", "word") == "bpe":
+                from ..model.tokenizer_bpe import BPETokenizer
+
+                tok = BPETokenizer(vocab_size=self.config.model.vocab_size)
+            else:
+                tok = VSSTokenizer(
+                    vocab_size=self.config.model.vocab_size,
+                    hash_buckets=self.config.model.hash_buckets,
+                )
             texts = []
             for ex in self.train[:20000]:
                 texts.append(
@@ -93,7 +99,6 @@ class Trainer:
         else:
             tok = self.model.tokenizer
             assert isinstance(tok, VSSTokenizer)
-
     # ---------------------------------------------------------------- train
     def train_epoch(
         self,
