@@ -1,0 +1,50 @@
+{
+  "protocol": "identical recipe (configs/vss-prototype-b77-slot-ho.yaml), only training seed differs; eval = matched 1000-example test subsample (seed 42), full 77-option schema, CPU",
+  "dataset": "banking77",
+  "seeds": {
+    "13": {
+      "report": "benchmarks/banking77-vss-test-1k/report.json",
+      "accuracy": 0.724,
+      "macro_f1": 0.7374,
+      "ece": 0.1231,
+      "brier": 0.1152,
+      "nll": 0.363
+    },
+    "42": {
+      "report": "benchmarks/banking77-vss-test-1k-s42/report.json",
+      "accuracy": 0.725,
+      "macro_f1": 0.736,
+      "ece": 0.121,
+      "brier": 0.1143,
+      "nll": 0.3717
+    },
+    "7": {
+      "report": "benchmarks/banking77-vss-test-1k-s7/report.json",
+      "accuracy": 0.737,
+      "macro_f1": 0.7443,
+      "ece": 0.1198,
+      "brier": 0.1107,
+      "nll": 0.3416
+    }
+  },
+  "summary": {
+    "accuracy_mean": 0.7287,
+    "accuracy_sample_std": 0.0072,
+    "accuracy_range": [0.724, 0.737],
+    "ece_mean": 0.1213,
+    "ece_sample_std": 0.0017,
+    "macro_f1_mean": 0.7392
+  },
+  "comparison_baseline": {
+    "baseline": "tfidf_lr (benchmarks/baselines/banking77-tfidf_lr.json)",
+    "accuracy": 0.87,
+    "ece": 0.2477,
+    "gap_vss_minus_baseline": -0.1413,
+    "gap_in_seed_std_units": -19.6
+  },
+  "conclusions": [
+    "Seed noise on Banking77 is ~0.7 accuracy points; the 14.1-point gap to TF-IDF+LR is ~20 seed-sigmas and cannot be a seed artifact.",
+    "ECE advantage over the baseline (~0.12 vs ~0.25) is stable across all three seeds.",
+    "CLINC150 results remain SINGLE-SEED (seed 13) and must be labeled as such."
+  ]
+}
