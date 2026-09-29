@@ -75,6 +75,17 @@ faster than sequential solo (B) at N=200. Cold start 2.36 s. A's own-question
 accuracy decays with N (D3 at scale).
 Evidence: `benchmarks/latency/clinc150.json`.
 
+### D10b. The serialization + slot-head layer costs ~13 accuracy points on the same backbone
+Identical encoder architecture, optimizer, schedule, and seed; only the input
+format and head differ. From-scratch: plain linear head over 151 intents on
+state-only text reaches **86.7% in-scope** (1000-example subsample) vs VSS
+full-model **73.98%**. Warm-started from the VSS encoder: 88.0%. The plain
+head also converges faster (val 86.9% by epoch 6 vs VSS's best val CE at
+epoch 3 of 8). VSS's typed-question machinery is a net accuracy *cost* on
+CLINC150.
+Evidence: `benchmarks/ablation/inscope_summary.json`,
+`benchmarks/ablation/encoder_classifier_scratch_inscope.json`.
+
 ### D11. Early synthetic results were leakage artifacts
 75/480 synthetic test examples were exact train duplicates; 92.9% had token
 Jaccard ≥ 0.7 to a train example; temperature was fitted on the eval split.
@@ -110,10 +121,11 @@ sensitive component. Not directly measured (no ablation of pooling).
 
 ## Unknown
 
-### U1. Whether VSS's architecture helps at all vs fine-tuning the same encoder as a classifier
-The honest baseline comparison is against classical ML (D9, P1), not against a
-transformer classifier head on the same 11.2M-parameter encoder. That is the
-decisive missing experiment.
+### U1. Whether the question-masked-attention fix preserves accuracy
+Candidate fix for D3 (block attention between question spans, keep
+state ↔ question attention) is untested. Note the D10b ablation removes the
+motivation for multi-question co-asking on accuracy grounds; U2 is now mainly
+about whether VSS can keep its single-pass serving story at ANY accuracy level.
 
 ### U2. Whether interference (D3) can be fixed without losing single-pass batching
 Candidate fixes (question-masked attention, per-question pooling at every layer,

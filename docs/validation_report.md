@@ -159,11 +159,23 @@ cause is the **bidirectional** encoder letting questions attend to each other
 | CLINC150 (in-scope, single seed) | 73.98% | 88.8% | **−14.8** | 0.040 | 0.297 |
 | Banking77 (3-seed mean) | 72.9% | 87.0% | **−14.1** | 0.121 | 0.248 |
 
-VSS loses on accuracy and AUROC on both datasets; wins on calibration and
-(and at k≥2 co-asking) latency. The honest reading: a bag-of-words linear
-model is stronger for this task family; VSS's value proposition must be
-found elsewhere (schema-constrained abstention, calibration, one-pass
-multi-question serving — the last of which is accuracy-limited, §10).
+**Same-encoder ablation (U1)** — identical backbone, optimizer, schedule,
+seed; only input format and head differ (`benchmarks/ablation/`):
+
+| model | in-scope acc (1000-sub) |
+|---|---|
+| VSS full model (slot-CE + questions) | 73.98% (full 4500) |
+| plain linear head, state-only, scratch | **86.7%** |
+| plain linear head, state-only, warm-start | **88.0%** |
+
+The serialization + slot-head layer **costs ~13 accuracy points** on the same
+backbone. The plain scratch head also matches the TF-IDF+LR baseline. VSS
+loses on accuracy and AUROC on both datasets and to its own backbone without
+the question machinery; it wins on calibration and (at k≥2 co-asking)
+latency. The honest reading: VSS's typed-question layer is a net cost for
+single-intent classification accuracy; its remaining value proposition is
+calibration + abstention + serving shape, two of which are themselves
+qualified by §9 and §10.
 
 ## 12. Statistical confidence
 
@@ -192,48 +204,68 @@ multi-question serving — the last of which is accuracy-limited, §10).
 7. **Single-pass multi-question accuracy is not preserved** (§10) — the
    architecture's marquee property degrades monotonically with k.
 8. **VSS trails a fair classical baseline on both real datasets** (§11).
+9. **Ablation harness bug (caught)**: the first encoder-classifier scratch
+   run silently trained only the linear head — `VSSEncoder` is a deliberate
+   non-Module, so encoder params never joined the optimizer. Detected by
+   checkpoint forensics (state dict had 2 tensors), fixed with an nn.Module
+   encoder box, and retrained. An intermediate "79.7%" warm-start number was
+   a frozen-encoder artifact and was discarded, not reported as a result.
 
 ## 14. Architecture conclusions
 
-1. **Mean-pooled question spans are the system's load-bearing weakness.**
-   Both major failures (option-text dilution D2; BPE regression P3) are
-   dilution of the pooled vector. Header-only serialization works *because*
-   it shortens and purifies the pooled region.
-2. **Bidirectional attention across questions is a design bug for the
+1. **The typed-question layer is a net accuracy cost for single-intent
+   classification.** The same encoder with a plain linear head beats the full
+   VSS model by ~13 points from scratch (§11). If VSS is to be justified, it
+   must be on calibration, abstention, or serving grounds — and each of
+   those is currently qualified (saturated head §9; interference §10).
+2. **Mean-pooled question spans are the system's load-bearing weakness.**
+   The major failures (option-text dilution; BPE regression; the ablation
+   gap) all point at information loss between serialization and the pooled
+   per-question vector. Header-only serialization works *because* it
+   shortens and purifies the pooled region — and the best head is one that
+   needs no question block at all.
+3. **Bidirectional attention across questions is a design bug for the
    multi-question claim.** With per-question spans pooled into independent
    vectors, cross-question attention only adds noise (§10). Either the
    encoder needs question-masked attention or the serving story must change.
-3. **The slot-projection choice head is the right call** — it trained stably
-   over 151 options where refine-CE collapsed, and permutation-invariance is
-   now a verified contract (§1 of claims).
-4. **The calibration head should be redesigned or dropped** — as built it is
+4. **The slot-projection choice head trained stably** where refine-CE
+   collapsed, and permutation-invariance is a verified contract — but the
+   head is outclassed by a linear head over a state-only pool (§11).
+5. **The calibration head should be redesigned or dropped** — as built it is
    a constant. Blend confidence ≈ top-prob in practice.
-5. **Word+hash tokenization is adequate and robust-in-variance** at this
+6. **Word+hash tokenization is adequate and robust-in-variance** at this
    scale; the OOV hash is doing real work that BPE could not replace.
 
 ## 15. What remains unproven
 
-- That VSS's architecture (vs the same encoder + a plain classifier head)
-  contributes anything on real data (U1 — the decisive missing ablation).
+- ~~That VSS's architecture (vs the same encoder + a plain classifier head)
+  contributes anything on real data~~ — now measured: it costs ~13 points
+  (§11). What remains unproven is any *offsetting* real-data benefit
+  (calibration/abstention gains attributable to the architecture rather than
+  to training details).
 - That multi-question single-pass serving can be made accuracy-preserving
   (U2).
-- CLINC150 multi-seed stability (U3).
+- CLINC150 multi-seed stability (U3) — including for the ablation result.
 - Any real-data validation of the Noul and Score heads (U4 — synthetic-only,
   and the synthetic benchmark itself was invalidated).
 - That slot-table size 1024 is adequate (U5; 9 label collisions at 151 labels).
 
 ## 16. Recommended next experiment
 
-**Encoder-classifier ablation (U1), then question-masked attention (U2).**
+**Question-masked attention, evaluated against the ablation bar.**
 
-1. Train the *same* 11.2M-parameter bidirectional encoder end-to-end as a
-   plain state classifier (CLS-pool + linear head over 151 intents), same
-   seed/epochs/batches. This isolates whether typed-question serialization
-   and slot heads add value or cost. If the plain head wins by the ~15-pt
-   baseline gap, the serialization layer — not the encoder — is the problem.
-2. If (1) confirms serialization is at fault, the highest-value fix is
-   **question-masked attention**: block attention between question spans in
-   the encoder (keep state ↔ question attention). Expected effect: co-asked
-   accuracy converges to solo (deletes the D3 dose-response) while keeping
-   single-pass batching; cost is one mask per layer. Validate against the
-   committed interference artifacts — they are the ready-made acceptance test.
+The U1 ablation (§11) removed the original motivation for co-asking: a plain
+head on state-only text is both more accurate and cheaper. The remaining
+scientific case for VSS's question layer must therefore show a *benefit the
+plain head cannot match*. The cleanest such test:
+
+1. Add question-masked attention (block attention between question spans,
+   keep state ↔ question attention) and re-run the committed interference
+   dose-response (`benchmarks/interference/`). Acceptance: co-asked accuracy
+   ≈ solo accuracy at every k (the −3.3…−20.0 pts decay disappears).
+2. Then require the fixed multi-question model to beat the §11 plain-head
+   baseline on a task the plain head cannot do at all: N questions over a
+   shared state with per-question gold (e.g., intent + slot-filling + score
+   jointly). If it cannot, the honest conclusion is that VSS's serialization
+   should be reduced to a plain classifier with auxiliary heads, and the
+   multi-question machinery retired.
