@@ -1,0 +1,44 @@
+# Multi-question value benchmark configuration.
+# Training hyperparameters for BOTH systems are set in code (config.PlainConfig
+# and the cloned configs/vss-prototype-*.yaml files) — this file documents the
+# experiment-level settings used by benchmark.py / train scripts.
+
+benchmark:
+  datasets: [synthetic, clinc150, banking77]
+  question_counts: [1, 2, 4, 8, 16, 32, 50]
+  seeds: [1, 2, 3]
+  n_eval_states: 500          # test states per dataset (identical across modes)
+  eval_seed: 42
+  warmup_iters: 30
+  measured_iters: 100
+  interference_at_q: [8, 32, 50]
+  permutation_at_q: [8, 32]
+  n_interference_states: 200
+
+# Plain classifier (System A/B) — mirrors the VSS recipe below on purpose.
+plain:
+  vocab_size: 16384
+  hash_buckets: 8192
+  hidden_size: 256
+  layers: 6
+  heads: 8
+  intermediate_size: 1024
+  dropout: 0.1
+  max_sequence_length: 4096
+  lr: 3.0e-4
+  weight_decay: 0.01
+  warmup_steps: 150
+  epochs: 8
+  batch_size: 32
+  clip_grad_norm: 1.0
+  score_bins: 64
+
+# VSS (System C) — the existing qmask recipe, unmodified:
+# configs/vss-prototype-clinc-slot-ho-qmask.yaml
+# (hidden 256, 6 layers, 8 heads, slot-CE choice head, header-only choice
+# serialization, question_masked: true, stable RoPE positions, 8 epochs,
+# AdamW lr 3e-4, cosine schedule, warmup 150, batch 32, seed 13)
+vss:
+  recipe: configs/vss-prototype-clinc-slot-ho-qmask.yaml
+  question_masked: true
+  seeds_trained_for_this_benchmark: [1, 2, 3]   # synthetic; CLINC/B77 reuse seed 13 + plain gets matched budget
