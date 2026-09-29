@@ -1,0 +1,46 @@
+{
+  "model": "runs/clinc150-slot-ho-qmask/final",
+  "data": "data/clinc150/test.jsonl",
+  "n_probes": 300,
+  "k_coasked": 4,
+  "seed": 42,
+  "answer_agreement_solo_vs_joint_per_slot": {
+    "slot0": 0.93,
+    "slot1": 0.8067,
+    "slot2": 0.8033,
+    "slot3": 0.8267
+  },
+  "mean_answer_agreement": 0.8417,
+  "accuracy_solo_per_slot": {
+    "slot0": 0.6067,
+    "slot1": 0.0133,
+    "slot2": 0.0067,
+    "slot3": 0.0
+  },
+  "accuracy_joint_per_slot": {
+    "slot0": 0.61,
+    "slot1": 0.0133,
+    "slot2": 0.0067,
+    "slot3": 0.0
+  },
+  "accuracy_solo_slot0_own_question": 0.6067,
+  "accuracy_joint_slot0_own_question": 0.61,
+  "net_slot0_accuracy_effect_of_coasking": 0.0033,
+  "flips_solo_right_joint_wrong_slot0": 3,
+  "flips_solo_wrong_joint_right_slot0": 4,
+  "SCORING_NOTE": "per-slot accuracy beyond slot0 is NOT meaningful: slots>0 ask foreign questions about this state, whose gold answers are unknowable; slot0 (own question on own state) is the only gold-scored comparison. All slots are valid for agreement/drift.",
+  "mean_top_prob_drift_per_slot": {
+    "slot0": 0.027791,
+    "slot1": 0.081015,
+    "slot2": 0.083878,
+    "slot3": 0.083458
+  },
+  "mean_top_prob_drift_overall": 0.069035,
+  "max_slot_top_prob_drift": 0.083878,
+  "solo_wall_seconds": 6.52,
+  "joint_wall_seconds": 4.339,
+  "solo_answers_per_s": 184.0,
+  "joint_answers_per_s": 276.5,
+  "joint_speedup_per_answer": 1.5,
+  "note": "encoder is BIDIRECTIONAL (is_causal=False): every question attends to all others in the request, so no slot is structurally immune; slot0 comparison is solo vs its position in the co-asked request. Batching invariance (same requests, different batch) is verified separately and holds to <1e-6."
+}

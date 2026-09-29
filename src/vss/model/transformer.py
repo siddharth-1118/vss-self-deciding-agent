@@ -29,7 +29,7 @@ def rotate_half(x: torch.Tensor) -> torch.Tensor:
 
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-    """x: [B, H, T, D]; cos/sin: [T, D/2] broadcast to [1, 1, T, D/2]."""
+    """x: [B, H, T, D]; cos/sin: [T, D/2] or [B, 1, T, D/2] (per-token pos)."""
     x1, x2 = x.chunk(2, dim=-1)
     return torch.cat((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1)
 
@@ -143,10 +143,12 @@ class TransformerEncoder(nn.Module):
         dropout: float = 0.0,
         rope_theta: float = 10000.0,
         pad_token_id: int = 0,
+        question_masked: bool = False,
     ) -> None:
         super().__init__()
         self.max_seq_len = max_seq_len
         self.pad_token_id = pad_token_id
+        self.question_masked = question_masked
         self.token_emb = nn.Embedding(vocab_size, dim, padding_idx=pad_token_id)
         self.blocks = nn.ModuleList(
             Block(dim, heads, kv_heads, ffn_dim, dropout) for _ in range(layers)
@@ -166,17 +168,45 @@ class TransformerEncoder(nn.Module):
             self._cos, self._sin, self._rope_len = cos, sin, cap
         return self._cos[:seq_len], self._sin[:seq_len]
 
-    def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
-        """token_ids: [B, T] -> contextual features [B, T, D]. Padding masked."""
+    def forward(
+        self,
+        token_ids: torch.Tensor,
+        attn_bias: torch.Tensor | None = None,
+        positions: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """token_ids: [B, T] -> contextual features [B, T, D]. Padding masked.
+
+        `attn_bias` (optional): additive [1,1,T,T] or [B,1,T,T] bias combined
+        with the padding mask (used for question-masked attention [vss-qmask]).
+        `positions` (optional): [B, T] int tensor of RoPE positions; required
+        with question masking so tokens keep stable positions regardless of
+        how many questions follow them in the request.
+        """
         bsz, seq = token_ids.shape
         if seq > self.max_seq_len:
             raise ValueError(f"sequence length {seq} exceeds max {self.max_seq_len}")
         x = self.token_emb(token_ids)
-        cos, sin = self._rope(seq, token_ids.device)
+        if positions is None:
+            cos, sin = self._rope(seq, token_ids.device)
+        else:
+            cos_full, sin_full = self._rope(int(positions.max().item()) + 1,
+                                            token_ids.device)
+            cos = cos_full[positions]  # [B, T, D/2]
+            sin = sin_full[positions]
+            cos = cos.unsqueeze(1)  # [B, 1, T, D/2] broadcast over heads
+            sin = sin.unsqueeze(1)
 
         pad = token_ids.eq(self.pad_token_id)  # [B, T]
         pad_bias = torch.zeros((bsz, 1, 1, seq), dtype=x.dtype, device=x.device)
         pad_bias.masked_fill_(pad[:, None, None, :], torch.finfo(x.dtype).min)
+        if attn_bias is not None:
+            if attn_bias.shape[-1] != seq or attn_bias.shape[-2] != seq:
+                raise ValueError(
+                    f"attn_bias seq mismatch: {tuple(attn_bias.shape)} vs T={seq}")
+            if attn_bias.shape[0] == 1:
+                pad_bias = pad_bias + attn_bias.to(pad_bias.dtype)
+            else:
+                pad_bias = pad_bias + attn_bias.to(pad_bias.dtype)
 
         for block in self.blocks:
             x = block(x, cos, sin, pad_bias)

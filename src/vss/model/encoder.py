@@ -67,7 +67,65 @@ class VSSEncoder:
         pad = self.encoder.pad_token_id
         batch_ids = [ids + [pad] * (max_len - len(ids)) for ids in seqs]
         token_ids = torch.tensor(batch_ids, dtype=torch.long, device=device)
-        return {"token_ids": token_ids, "spans": spans}
+
+        # per-question-block attention mask [vss-qmask]: each question block
+        # attends to the state and to itself only; the state attends to itself
+        # only. Every question vector is then a pure function of (state, that
+        # question), which provably removes the measured cross-question
+        # interference (benchmarks/interference). Built only when the encoder
+        # is configured for it; None keeps the legacy bidirectional behavior.
+        qmask = None
+        if getattr(self.encoder, "question_masked", False) and any(spans):
+            T = token_ids.shape[1]
+            m = torch.zeros(T, T, dtype=torch.float32, device=device)
+            neg = torch.finfo(torch.float32).min
+            for b, spans_b in enumerate(spans):
+                qs = [(s, e) for (s, e) in spans_b if e > s]
+                if not qs:
+                    continue
+                # widen spans for boundary-token drift, but never into the
+                # previous/next question block (spans may touch: e_i == s_{i+1})
+                wide: list[tuple[int, int]] = []
+                for i, (s, e) in enumerate(qs):
+                    prev_e = qs[i - 1][1] if i > 0 else 0
+                    next_s = qs[i + 1][0] if i + 1 < len(qs) else T
+                    ws = max(prev_e, s - 1)
+                    we = min(next_s, e + 1)
+                    if we > ws:
+                        wide.append((ws, we))
+                is_q = torch.zeros(T, dtype=torch.bool, device=device)
+                for s, e in wide:
+                    is_q[s:e] = True
+                # state rows: mask ALL question columns
+                state_rows = ~is_q
+                m[state_rows, :] = torch.where(is_q, neg, 0.0)
+                # question rows: mask other question columns
+                for s, e in wide:
+                    other_q = is_q.clone()
+                    other_q[s:e] = False
+                    m[s:e, :] = torch.where(other_q, neg, 0.0)
+            qmask = m.unsqueeze(0).unsqueeze(0)  # [1,1,T,T], shared across batch
+        # stable per-token positions [vss-qmask]: each serialization block
+        # occupies positions independent of how many blocks FOLLOW it, so a
+        # question's RoPE phase never changes when other questions are
+        # appended. Required together with the attention mask for isolation.
+        positions = None
+        if getattr(self.encoder, "question_masked", False):
+            seq_len = token_ids.shape[1]
+            state_len = min(spans[0][0][0] if spans and spans[0] else seq_len, seq_len)
+            # positions 0..state_len-1 for the state block; each question k
+            # restarts at state_len (its own block-local offset resets per q)
+            pos = torch.zeros(token_ids.shape[0], seq_len, dtype=torch.long, device=device)
+            for b, spans_b in enumerate(spans):
+                for i, (s, e) in enumerate(spans_b):
+                    if e <= s:
+                        continue
+                    pos[b, s:e] = state_len + torch.arange(e - s, device=device)
+                pos[b, : min(state_len, seq_len)] = torch.arange(
+                    min(state_len, seq_len), device=device)
+            positions = pos
+        return {"token_ids": token_ids, "spans": spans, "question_mask": qmask,
+                "positions": positions}
 
     def _serialize_with_spans(
         self, state: dict, questions: list[dict]
@@ -113,7 +171,8 @@ class VSSEncoder:
         """
         enc = self.encode_batch(states, questions_list, device)
         token_ids = enc["token_ids"]
-        H = self.encoder(token_ids)  # [B, T, D]
+        H = self.encoder(token_ids, attn_bias=enc.get("question_mask"),
+                         positions=enc.get("positions"))  # [B, T, D]
         qvecs: list[torch.Tensor] = []
         for b, spans in enumerate(enc["spans"]):
             for (s, e) in spans:

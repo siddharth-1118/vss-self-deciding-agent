@@ -31,6 +31,7 @@ class VSSModel(nn.Module):
             dropout=config.dropout,
             rope_theta=config.rope_theta,
             pad_token_id=config.pad_token_id,
+            question_masked=config.question_masked,
         )
         from .encoder import VSSEncoder as _E  # local import to avoid cycle
 
@@ -60,7 +61,8 @@ class VSSModel(nn.Module):
                 [{**q, "header_only_choice": True} for q in qs] for qs in questions_list
             ]
         enc = self.vss_encoder.encode_batch(states, serial_questions, device)
-        H = self.encoder(enc["token_ids"])
+        H = self.encoder(enc["token_ids"], attn_bias=enc.get("question_mask"),
+                         positions=enc.get("positions"))
         qvecs = []
         for b, spans in enumerate(enc["spans"]):
             for (s, e) in spans:
