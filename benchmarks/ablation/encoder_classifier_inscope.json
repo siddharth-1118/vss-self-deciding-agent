@@ -1,0 +1,9 @@
+{
+  "checkpoint": "runs/ablation-cls/last.pt",
+  "protocol": "n=1000 test subsample seed 42 (matches baseline comparisons)",
+  "accuracy_all_1000_including_oos_as_class": 0.684,
+  "accuracy_inscope_only": 0.7968,
+  "n_inscope": 817,
+  "vss_reference_inscope": 0.7398,
+  "vss_reference_protocol": "full 4500 in-scope (benchmarks/ood/clinc150_slot_ho_best.json)"
+}

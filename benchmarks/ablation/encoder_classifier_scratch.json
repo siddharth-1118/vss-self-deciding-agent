@@ -1,0 +1,20 @@
+{
+  "ablation": "same encoder architecture, plain linear head, state-only input; random init",
+  "train_args": {
+    "train": "data/clinc150/train.jsonl",
+    "epochs": 8,
+    "batch_size": 32,
+    "lr": 0.0003,
+    "weight_decay": 0.01,
+    "warmup_steps": 150,
+    "seed": 13
+  },
+  "n_classes": 151,
+  "total_steps": 2664,
+  "best_val_accuracy": 0.869,
+  "test_accuracy_state_only_classifier": 0.748,
+  "vss_reference_full_schema_accuracy": 0.7398,
+  "vss_reference_artifact": "benchmarks/ood/clinc150_slot_ho_best.json",
+  "wall_seconds": 352.0,
+  "note": "identical optimizer/schedule/epochs/seed as the VSS run; the only differences are the input (state-only serialization, no question block) and the head (linear over 151 intents instead of slot-CE)."
+}
