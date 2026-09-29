@@ -224,10 +224,12 @@ qualified by §9 and §10.
    per-question vector. Header-only serialization works *because* it
    shortens and purifies the pooled region — and the best head is one that
    needs no question block at all.
-3. **Bidirectional attention across questions is a design bug for the
-   multi-question claim.** With per-question spans pooled into independent
-   vectors, cross-question attention only adds noise (§10). Either the
-   encoder needs question-masked attention or the serving story must change.
+3. **Interference is a mask bug, not an architecture fate.** Question-masked
+   attention + stable RoPE positions eliminate the co-asking decay exactly
+   (dose-response flat ±0.7 pts at k≤32) at a cost of −2.3 pts solo accuracy
+   and an ECE improvement (0.040→0.028). The remaining question is whether
+   single-pass co-asking can justify that trade against a plain classifier
+   with auxiliary heads.
 4. **The slot-projection choice head trained stably** where refine-CE
    collapsed, and permutation-invariance is a verified contract — but the
    head is outclassed by a linear head over a state-only pool (§11).
@@ -252,20 +254,22 @@ qualified by §9 and §10.
 
 ## 16. Recommended next experiment
 
-**Question-masked attention, evaluated against the ablation bar.**
+**Question-masked attention: DONE — passed its acceptance test.**
 
-The U1 ablation (§11) removed the original motivation for co-asking: a plain
-head on state-only text is both more accurate and cheaper. The remaining
-scientific case for VSS's question layer must therefore show a *benefit the
-plain head cannot match*. The cleanest such test:
+Implemented (`question_masked: true`; block-isolation mask + stable per-token
+RoPE positions) and re-trained on the identical CLINC150 recipe. The
+committed dose-response flipped from −3.3/−4.0/−5.7/−8.7/−20.0 pts (k=2/4/8/
+16/32) to **+0.7/+0.3/0.0/0.0/+0.3** — co-asking is now accuracy-preserving,
+with ~1.95× throughput at k=32. Costs: −2.3 pts solo accuracy (71.7% vs
+74.0%), ECE answered improved 0.040→0.028, OOS AUROC unchanged (0.803).
+Evidence: `benchmarks/interference/clinc150_qmask_dose_response.json`,
+`benchmarks/ood/clinc150_qmask_best.json`.
 
-1. Add question-masked attention (block attention between question spans,
-   keep state ↔ question attention) and re-run the committed interference
-   dose-response (`benchmarks/interference/`). Acceptance: co-asked accuracy
-   ≈ solo accuracy at every k (the −3.3…−20.0 pts decay disappears).
-2. Then require the fixed multi-question model to beat the §11 plain-head
-   baseline on a task the plain head cannot do at all: N questions over a
-   shared state with per-question gold (e.g., intent + slot-filling + score
-   jointly). If it cannot, the honest conclusion is that VSS's serialization
-   should be reduced to a plain classifier with auxiliary heads, and the
-   multi-question machinery retired.
+**Next: the multi-question value test.** With interference eliminated, the
+last open question is whether single-pass co-asking beats a plain classifier
+with auxiliary heads on a task where per-question gold over a shared state is
+the task (e.g., intent + slot-fill + score asked jointly, scored per
+question). Compare: (a) plain head + N forward passes, (b) qmask VSS, one
+pass. If (a) wins on accuracy×latency, the multi-question machinery should
+be retired in favor of a plain classifier with auxiliary heads; if (b) wins,
+VSS has its justified niche.

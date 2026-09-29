@@ -24,12 +24,19 @@ Full-151-option text blocks in the `<QUESTION>` region collapsed accuracy from
 16.8% → 73.98%.
 Evidence: `fix-choice-dilution` measurements; `benchmarks/ood/clinc150_slot_ho_best.json`.
 
-### D3. Co-asking questions degrades accuracy monotonically
+### D3. Co-asking questions degrades accuracy monotonically — FIXED by question-masked attention
 Gold-scored slot0 comparison (own question, own state): solo 61.7% vs
 co-asked 56.0% at k=8 (21 harmful flips vs 4 helpful). Dose-response
 −3.3/−4.0/−5.7/−8.7/−20.0 pts at k=2/4/8/16/32. Cause: bidirectional encoder
 (`is_causal=False`) — every question attends to all others.
-Evidence: `benchmarks/interference/clinc150_dose_response.json`.
+**Resolution**: with `question_masked: true` (block-isolation mask + stable
+per-token RoPE positions), the dose-response is flat: +0.7/+0.3/0.0/0.0/+0.3
+at the same k values, slot0 agreement 0.93 flat in k, speedup ~1.95×.
+Cost of the fix: −2.3 pts solo accuracy (71.7% vs 74.0%), ECE answered
+improved 0.040→0.028, OOS AUROC unchanged (0.803).
+Evidence: `benchmarks/interference/clinc150_dose_response.json` (unmasked),
+`benchmarks/interference/clinc150_qmask_dose_response.json` (masked),
+`benchmarks/ood/clinc150_qmask_best.json`.
 
 ### D4. Batching itself is exactly invariant
 Same requests in different batches agree to <1e-6 in probabilities — the
@@ -121,15 +128,12 @@ sensitive component. Not directly measured (no ablation of pooling).
 
 ## Unknown
 
-### U1. Whether the question-masked-attention fix preserves accuracy
-Candidate fix for D3 (block attention between question spans, keep
-state ↔ question attention) is untested. Note the D10b ablation removes the
-motivation for multi-question co-asking on accuracy grounds; U2 is now mainly
-about whether VSS can keep its single-pass serving story at ANY accuracy level.
-
-### U2. Whether interference (D3) can be fixed without losing single-pass batching
-Candidate fixes (question-masked attention, per-question pooling at every layer,
-causal question blocks) are untested.
+### U2. Whether VSS (with the interference fix) can beat the plain-head baseline on genuinely multi-question tasks
+Question-masked attention fixes interference exactly (D3 resolution) at −2.3
+pts solo accuracy. Whether the single-pass co-asking machinery (now
+accuracy-preserving, ~1.95× throughput) can beat a plain classifier with
+auxiliary heads on a task with per-question gold over a shared state is the
+last open architecture question.
 
 ### U3. Multi-seed behavior of CLINC150 results
 All CLINC150 numbers are seed 13 only. Banking77 variance was 0.72 pts, but
