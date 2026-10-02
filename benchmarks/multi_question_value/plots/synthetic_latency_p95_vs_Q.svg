@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" font-family="monospace" font-size="11">
+<rect width="640" height="400" fill="white"/>
+<text x="320.0" y="18" text-anchor="middle">synthetic: p95 request latency vs Q</text>
+<line x1="48" y1="360.0" x2="624" y2="360.0" stroke="#eee"/>
+<text x="42" y="363.0" text-anchor="end" fill="#555">-52</text>
+<line x1="48" y1="84.1" x2="624" y2="84.1" stroke="#eee"/>
+<text x="42" y="87.1" text-anchor="end" fill="#555">147</text>
+<line x1="48" y1="67.5" x2="624" y2="67.5" stroke="#eee"/>
+<text x="42" y="70.5" text-anchor="end" fill="#555">345</text>
+<line x1="48" y1="58.7" x2="624" y2="58.7" stroke="#eee"/>
+<text x="42" y="61.7" text-anchor="end" fill="#555">544</text>
+<line x1="48" y1="52.6" x2="624" y2="52.6" stroke="#eee"/>
+<text x="42" y="55.6" text-anchor="end" fill="#555">743</text>
+<line x1="48" y1="48.0" x2="624" y2="48.0" stroke="#eee"/>
+<text x="42" y="51.0" text-anchor="end" fill="#555">941</text>
+<line x1="48.0" y1="360" x2="48.0" y2="364" stroke="#888"/>
+<text x="48.0" y="376" text-anchor="middle" fill="#555">1</text>
+<line x1="59.8" y1="360" x2="59.8" y2="364" stroke="#888"/>
+<text x="59.8" y="376" text-anchor="middle" fill="#555">2</text>
+<line x1="83.3" y1="360" x2="83.3" y2="364" stroke="#888"/>
+<text x="83.3" y="376" text-anchor="middle" fill="#555">4</text>
+<line x1="130.3" y1="360" x2="130.3" y2="364" stroke="#888"/>
+<text x="130.3" y="376" text-anchor="middle" fill="#555">8</text>
+<line x1="224.3" y1="360" x2="224.3" y2="364" stroke="#888"/>
+<text x="224.3" y="376" text-anchor="middle" fill="#555">16</text>
+<line x1="412.4" y1="360" x2="412.4" y2="364" stroke="#888"/>
+<text x="412.4" y="376" text-anchor="middle" fill="#555">32</text>
+<line x1="624.0" y1="360" x2="624.0" y2="364" stroke="#888"/>
+<text x="624.0" y="376" text-anchor="middle" fill="#555">50</text>
+<line x1="48" y1="360" x2="624" y2="360" stroke="#333"/>
+<line x1="48" y1="360" x2="48" y2="48" stroke="#333"/>
+<text x="320.0" y="396" text-anchor="middle" fill="#333">questions per request</text>
+<text x="12" y="200.0" text-anchor="middle" fill="#333" transform="rotate(-90 12 200.0)">ms (log scale)</text>
+<polyline points="48.0,126.6 59.8,115.1 83.3,96.9 130.3,87.9 224.3,71.1 412.4,58.4 624.0,49.5" fill="none" stroke="#d62728" stroke-width="2"/>
+<circle cx="48.0" cy="126.6" r="3" fill="#d62728"/>
+<circle cx="59.8" cy="115.1" r="3" fill="#d62728"/>
+<circle cx="83.3" cy="96.9" r="3" fill="#d62728"/>
+<circle cx="130.3" cy="87.9" r="3" fill="#d62728"/>
+<circle cx="224.3" cy="71.1" r="3" fill="#d62728"/>
+<circle cx="412.4" cy="58.4" r="3" fill="#d62728"/>
+<circle cx="624.0" cy="49.5" r="3" fill="#d62728"/>
+<rect x="434" y="54" width="14" height="3" fill="#d62728"/>
+<text x="454" y="59">A sequential classifier</text>
+<polyline points="48.0,126.6 59.8,118.5 83.3,108.6 130.3,103.8 224.3,91.8 412.4,73.0 624.0,67.5" fill="none" stroke="#ff7f0e" stroke-width="2"/>
+<circle cx="48.0" cy="126.6" r="3" fill="#ff7f0e"/>
+<circle cx="59.8" cy="118.5" r="3" fill="#ff7f0e"/>
+<circle cx="83.3" cy="108.6" r="3" fill="#ff7f0e"/>
+<circle cx="130.3" cy="103.8" r="3" fill="#ff7f0e"/>
+<circle cx="224.3" cy="91.8" r="3" fill="#ff7f0e"/>
+<circle cx="412.4" cy="73.0" r="3" fill="#ff7f0e"/>
+<circle cx="624.0" cy="67.5" r="3" fill="#ff7f0e"/>
+<rect x="434" y="70" width="14" height="3" fill="#ff7f0e"/>
+<text x="454" y="75">B batched classifier</text>
+<polyline points="48.0,123.8 59.8,122.7 83.3,107.7 130.3,116.1 224.3,108.7 412.4,80.6 624.0,84.2" fill="none" stroke="#1f77b4" stroke-width="2"/>
+<circle cx="48.0" cy="123.8" r="3" fill="#1f77b4"/>
+<circle cx="59.8" cy="122.7" r="3" fill="#1f77b4"/>
+<circle cx="83.3" cy="107.7" r="3" fill="#1f77b4"/>
+<circle cx="130.3" cy="116.1" r="3" fill="#1f77b4"/>
+<circle cx="224.3" cy="108.7" r="3" fill="#1f77b4"/>
+<circle cx="412.4" cy="80.6" r="3" fill="#1f77b4"/>
+<circle cx="624.0" cy="84.2" r="3" fill="#1f77b4"/>
+<rect x="434" y="86" width="14" height="3" fill="#1f77b4"/>
+<text x="454" y="91">C VSS single-pass</text>
+</svg>

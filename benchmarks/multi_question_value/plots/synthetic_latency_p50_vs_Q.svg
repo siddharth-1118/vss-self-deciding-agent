@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" font-family="monospace" font-size="11">
+<rect width="640" height="400" fill="white"/>
+<text x="320.0" y="18" text-anchor="middle">synthetic: median request latency vs Q</text>
+<line x1="48" y1="360.0" x2="624" y2="360.0" stroke="#eee"/>
+<text x="42" y="363.0" text-anchor="end" fill="#555">-46.6</text>
+<line x1="48" y1="84.4" x2="624" y2="84.4" stroke="#eee"/>
+<text x="42" y="87.4" text-anchor="end" fill="#555">131</text>
+<line x1="48" y1="67.6" x2="624" y2="67.6" stroke="#eee"/>
+<text x="42" y="70.6" text-anchor="end" fill="#555">308</text>
+<line x1="48" y1="58.7" x2="624" y2="58.7" stroke="#eee"/>
+<text x="42" y="61.7" text-anchor="end" fill="#555">485</text>
+<line x1="48" y1="52.6" x2="624" y2="52.6" stroke="#eee"/>
+<text x="42" y="55.6" text-anchor="end" fill="#555">662</text>
+<line x1="48" y1="48.0" x2="624" y2="48.0" stroke="#eee"/>
+<text x="42" y="51.0" text-anchor="end" fill="#555">840</text>
+<line x1="48.0" y1="360" x2="48.0" y2="364" stroke="#888"/>
+<text x="48.0" y="376" text-anchor="middle" fill="#555">1</text>
+<line x1="59.8" y1="360" x2="59.8" y2="364" stroke="#888"/>
+<text x="59.8" y="376" text-anchor="middle" fill="#555">2</text>
+<line x1="83.3" y1="360" x2="83.3" y2="364" stroke="#888"/>
+<text x="83.3" y="376" text-anchor="middle" fill="#555">4</text>
+<line x1="130.3" y1="360" x2="130.3" y2="364" stroke="#888"/>
+<text x="130.3" y="376" text-anchor="middle" fill="#555">8</text>
+<line x1="224.3" y1="360" x2="224.3" y2="364" stroke="#888"/>
+<text x="224.3" y="376" text-anchor="middle" fill="#555">16</text>
+<line x1="412.4" y1="360" x2="412.4" y2="364" stroke="#888"/>
+<text x="412.4" y="376" text-anchor="middle" fill="#555">32</text>
+<line x1="624.0" y1="360" x2="624.0" y2="364" stroke="#888"/>
+<text x="624.0" y="376" text-anchor="middle" fill="#555">50</text>
+<line x1="48" y1="360" x2="624" y2="360" stroke="#333"/>
+<line x1="48" y1="360" x2="48" y2="48" stroke="#333"/>
+<text x="320.0" y="396" text-anchor="middle" fill="#333">questions per request</text>
+<text x="12" y="200.0" text-anchor="middle" fill="#333" transform="rotate(-90 12 200.0)">ms (log scale)</text>
+<polyline points="48.0,126.9 59.8,115.3 83.3,99.7 130.3,87.5 224.3,74.0 412.4,58.6 624.0,49.5" fill="none" stroke="#d62728" stroke-width="2"/>
+<circle cx="48.0" cy="126.9" r="3" fill="#d62728"/>
+<circle cx="59.8" cy="115.3" r="3" fill="#d62728"/>
+<circle cx="83.3" cy="99.7" r="3" fill="#d62728"/>
+<circle cx="130.3" cy="87.5" r="3" fill="#d62728"/>
+<circle cx="224.3" cy="74.0" r="3" fill="#d62728"/>
+<circle cx="412.4" cy="58.6" r="3" fill="#d62728"/>
+<circle cx="624.0" cy="49.5" r="3" fill="#d62728"/>
+<rect x="434" y="54" width="14" height="3" fill="#d62728"/>
+<text x="454" y="59">A sequential classifier</text>
+<polyline points="48.0,127.4 59.8,121.1 83.3,111.2 130.3,103.5 224.3,91.8 412.4,75.6 624.0,67.9" fill="none" stroke="#ff7f0e" stroke-width="2"/>
+<circle cx="48.0" cy="127.4" r="3" fill="#ff7f0e"/>
+<circle cx="59.8" cy="121.1" r="3" fill="#ff7f0e"/>
+<circle cx="83.3" cy="111.2" r="3" fill="#ff7f0e"/>
+<circle cx="130.3" cy="103.5" r="3" fill="#ff7f0e"/>
+<circle cx="224.3" cy="91.8" r="3" fill="#ff7f0e"/>
+<circle cx="412.4" cy="75.6" r="3" fill="#ff7f0e"/>
+<circle cx="624.0" cy="67.9" r="3" fill="#ff7f0e"/>
+<rect x="434" y="70" width="14" height="3" fill="#ff7f0e"/>
+<text x="454" y="75">B batched classifier</text>
+<polyline points="48.0,126.3 59.8,125.2 83.3,121.0 130.3,115.7 224.3,108.4 412.4,95.0 624.0,87.6" fill="none" stroke="#1f77b4" stroke-width="2"/>
+<circle cx="48.0" cy="126.3" r="3" fill="#1f77b4"/>
+<circle cx="59.8" cy="125.2" r="3" fill="#1f77b4"/>
+<circle cx="83.3" cy="121.0" r="3" fill="#1f77b4"/>
+<circle cx="130.3" cy="115.7" r="3" fill="#1f77b4"/>
+<circle cx="224.3" cy="108.4" r="3" fill="#1f77b4"/>
+<circle cx="412.4" cy="95.0" r="3" fill="#1f77b4"/>
+<circle cx="624.0" cy="87.6" r="3" fill="#1f77b4"/>
+<rect x="434" y="86" width="14" height="3" fill="#1f77b4"/>
+<text x="454" y="91">C VSS single-pass</text>
+</svg>
