@@ -77,8 +77,16 @@ class VSSEncoder:
         qmask = None
         if getattr(self.encoder, "question_masked", False) and any(spans):
             T = token_ids.shape[1]
-            m = torch.zeros(T, T, dtype=torch.float32, device=device)
             neg = torch.finfo(torch.float32).min
+            # PER-EXAMPLE masks [B,1,T,T]. A single shared [T,T] matrix is
+            # wrong: the loop below writes disjoint row sets per example, so
+            # the last example's layout wins and every other example is
+            # masked against another example's span geometry. That silently
+            # removed block isolation for batched requests whose span layouts
+            # differ, and made answers depend on batch composition and on
+            # question order (reordering shifts spans). One mask per example
+            # is also what the isolation guarantee is defined against.
+            m = torch.zeros(len(spans), T, T, dtype=torch.float32, device=device)
             for b, spans_b in enumerate(spans):
                 qs = [(s, e) for (s, e) in spans_b if e > s]
                 if not qs:
@@ -98,13 +106,13 @@ class VSSEncoder:
                     is_q[s:e] = True
                 # state rows: mask ALL question columns
                 state_rows = ~is_q
-                m[state_rows, :] = torch.where(is_q, neg, 0.0)
+                m[b, state_rows, :] = torch.where(is_q, neg, 0.0)
                 # question rows: mask other question columns
                 for s, e in wide:
                     other_q = is_q.clone()
                     other_q[s:e] = False
-                    m[s:e, :] = torch.where(other_q, neg, 0.0)
-            qmask = m.unsqueeze(0).unsqueeze(0)  # [1,1,T,T], shared across batch
+                    m[b, s:e, :] = torch.where(other_q, neg, 0.0)
+            qmask = m.unsqueeze(1)  # [B,1,T,T]
         # stable per-token positions [vss-qmask]: each serialization block
         # occupies positions independent of how many blocks FOLLOW it, so a
         # question's RoPE phase never changes when other questions are

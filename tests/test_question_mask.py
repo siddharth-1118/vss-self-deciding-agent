@@ -119,3 +119,68 @@ class TestMaskConstruction:
         enc = qm_model.vss_encoder.encode_batch(
             [dict(STATE)], [[]], device="cpu")
         assert enc["question_mask"] is None
+
+    def test_mask_is_per_example_in_heterogeneous_batch(
+        self, qm_model: VSSModel) -> None:
+        """Regression: one mask per example, not one shared across the batch.
+
+        A shared [T, T] matrix had the last example's span geometry overwrite
+        every other example's rows, so block isolation silently depended on
+        batch composition and question order (measured: order agreement
+        0.74 -> 0.99). This pins per-example masks.
+        """
+        states = [
+            {"message": "how do i locate my card"},
+            {"message": "a much longer customer message about my card " * 3},
+        ]
+        qsets = [[Q_A, Q_B], [Q_C]]  # different question counts per example
+        enc = qm_model.vss_encoder.encode_batch(states, qsets, device="cpu")
+        m = enc["question_mask"]
+        assert m is not None
+        B, _, T, _ = m.shape
+        assert m.shape == (B, 1, T, T), "mask must carry one plane per example"
+
+        for b in range(B):
+            spans = enc["spans"][b]
+            qm = m[b, 0]
+            for i, (s, e) in enumerate(spans):
+                for j, (s2, e2) in enumerate(spans):
+                    if i == j:
+                        assert (qm[s:e, s2:e2] == 0).all()
+                    else:
+                        assert (qm[s:e, s2:e2] < -1e8).all()
+                # state rows must not see this example's question columns.
+                # Spans are widened by one token per side for boundary drift,
+                # so skip the boundary column when slicing the state region.
+                assert (qm[: max(0, s - 1), s:e] < -1e8).all()
+
+    def test_batch_invariance_with_heterogeneous_spans(
+        self, qm_model: VSSModel) -> None:
+        """Batched answers must equal single-example answers (same model)."""
+        states = [
+            {"message": "how do i locate my card"},
+            {"message": "a much longer customer message about my card " * 3},
+        ]
+        qsets = [[Q_A, Q_B], [Q_C]]
+        qm_model.eval()
+        with torch.no_grad():
+            batched = qm_model(states, qsets, device="cpu")
+        singles = []
+        for st, qs in zip(states, qsets):
+            with torch.no_grad():
+                singles.append(qm_model([st], [qs], device="cpu"))
+        for b, single in enumerate(singles):
+            for qi, row_b in enumerate(batched["per_example_rows"][b]):
+                row_s = single["per_example_rows"][0][qi]
+                assert row_b["type"] == row_s["type"]
+                for key in ("logits", "prob", "abstain_logit"):
+                    if key in row_b:
+                        # atol is fp32 padding-length noise (~2e-4 here: the
+                        # padded sequence is shorter unbatched, so matmul
+                        # shapes differ). The shared-mask bug this pins caused
+                        # order-scale changes (0.74 -> 0.99 agreement), orders
+                        # of magnitude above this tolerance.
+                        assert torch.allclose(
+                            row_b[key].float(), row_s[key].float(), atol=2e-3
+                        ), (f"example {b} question {qi} field {key} changed "
+                            "with batch composition")
