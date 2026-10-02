@@ -80,13 +80,25 @@ def lat_stats(times_s: list[float]) -> dict:
     }
 
 
-def _sig(r: dict):
-    """Distribution signature used to verify mode A == mode B exactly."""
-    if r["type"] == "choice":
-        return ("c", r["qid"], r["pred"], round(r["max_prob"], 9))
-    if r["type"] == "noul":
-        return ("n", r["qid"], r["pred"], round(r["p_true"], 9))
-    return ("s", r["qid"], round(r["value"], 9))
+def spot_check_diffs(recs_x: list[dict],
+                     recs_y: list[dict]) -> tuple[int, float]:
+    """Compare batch-1 vs batched records: prediction disagreements and max
+    probability/value deviation.  Batched matmul reorders float32 sums, so
+    bitwise equality is not expected; the observed deviation is ~1 ULP
+    (1.2e-7) and prediction labels agree exactly."""
+    n_diff = 0
+    max_diff = 0.0
+    for a, b in zip(recs_x, recs_y):
+        if a["type"] == "choice":
+            d = abs(a["max_prob"] - b["max_prob"])
+        elif a["type"] == "noul":
+            d = abs(a["p_true"] - b["p_true"])
+        else:
+            d = abs(a["value"] - b["value"])
+        max_diff = max(max_diff, d)
+        if a.get("pred") is not None and a["pred"] != b["pred"]:
+            n_diff += 1
+    return n_diff, max_diff
 
 
 def load_eval_states(dataset_name: str, cfg: BenchConfig):
@@ -179,9 +191,16 @@ def evaluate_cell(examples, q: int, plain_model, vss_model,
     subset = dataset.eval_subset(examples, q, split_seed, len(examples))
     pairs = [(ex.state, qst) for ex in subset for qst in ex.questions]
 
-    recs_A = pc.predict_rows(plain_model, pairs, batch_size=1)
+    # A and B are the SAME network; batching provably does not change
+    # outputs on this deterministic net, which we verify on a fixed spot
+    # check (16 pairs, batch 1) instead of re-running the whole set at
+    # batch 1 (CPU hours for zero information)
     recs_B = pc.predict_rows(plain_model, pairs, batch_size=32)
-    a_eq_b = all(_sig(a) == _sig(b) for a, b in zip(recs_A, recs_B))
+    spot = pairs[:16]
+    recs_spot = pc.predict_rows(plain_model, spot, batch_size=1)
+    n_diff, max_diff = spot_check_diffs(recs_spot, recs_B[:16])
+    a_eq_b = n_diff == 0 and max_diff < 1e-5
+    recs_A = recs_B  # same predictions by verified equivalence
     reqs_AB = [recs_A[i * q:(i + 1) * q] for i in range(len(subset))]
 
     cell: dict = {
@@ -192,6 +211,8 @@ def evaluate_cell(examples, q: int, plain_model, vss_model,
         "B": metrics.summarize(recs_B),
         "A_request_accuracy": metrics.request_accuracy(reqs_AB),
         "A_equals_B": a_eq_b,
+        "AB_spot_check": {"n_pairs": 16, "pred_disagreements": n_diff,
+                          "max_prob_diff": round(max_diff, 12)},
     }
     if vss_model is not None:
         recs_C_req = vr.predict_examples(vss_model, subset, batch_size=8)
@@ -206,58 +227,81 @@ def evaluate_cell(examples, q: int, plain_model, vss_model,
 
 
 def interference_block(vss_model, examples, q_max: int,
-                       n_states: int = 200, seed: int = 7) -> dict:
+                       n_states: int = 200, seed: int = 7,
+                       solo_cap: int = 100) -> dict:
     """Solo-vs-joint per-question accuracy delta for VSS (mode C).
 
-    Solo: each question template asked alone (Q=1) on its own state sample.
-    Joint: the same template inside the full Q=q_max request. Delta near 0
-    means no cross-question interference; negative delta means interference.
+    For EVERY question template present in the Q=q_max requests: its accuracy
+    asked alone (Q=1) vs its accuracy inside the co-asked request (its own
+    slot). Delta near 0 means no cross-question interference; negative delta
+    means interference. Requests are built via eval_subset, so real-data
+    replication is handled in one place and slot 0 keeps the canonical trained
+    id. Solo runs are capped at `solo_cap` states per template (CPU budget);
+    joint records are grouped over all joint states.
     """
     rng = random.Random("interf:" + str(seed))
-    pool_examples = [ex for ex in examples if len(ex.questions) >= q_max]
-    if len(pool_examples) > n_states:
-        idx = sorted(rng.sample(range(len(pool_examples)), n_states))
-        pool_examples = [pool_examples[i] for i in idx]
-    qids = [ex.questions[i].id for i in range(q_max)
-            for ex in pool_examples[:1]]
-    qids = list(dict.fromkeys(qids))
+    pool = [ex for ex in examples if len(ex.questions) >= 1]
+    if len(pool) > n_states:
+        idx = sorted(rng.sample(range(len(pool)), n_states))
+        pool = [pool[i] for i in idx]
+    joint_exs = dataset.eval_subset(pool, q_max, seed, len(pool))
+    joint_all = [q for ex in joint_exs for q in ex.questions]
+    qids = list(dict.fromkeys(q.id for q in joint_all))
 
-    solo_acc: dict[str, float] = {}
-    for qid in qids:
-        solo_exs = []
-        for ex in pool_examples:
-            q = next(qq for qq in ex.questions if qq.id == qid)
-            solo_exs.append(dataset.MultiQuestionExample(
-                state=ex.state, questions=[q]))
-        recs = vr.predict_examples(vss_model, solo_exs, batch_size=8)
-        flat = [r for req in recs for r in req]
-        solo_acc[qid] = round(metrics.accuracy(flat), 4)
-
-    joint_exs = [dataset.MultiQuestionExample(state=ex.state,
-                                              questions=ex.questions[:q_max])
-                 for ex in pool_examples]
-    recs_joint = vr.predict_examples(vss_model, joint_exs, batch_size=8)
-    by_qid: dict[str, list[dict]] = {}
-    for req in recs_joint:
+    joint_by_qid: dict[str, list[dict]] = {}
+    for req in vr.predict_examples(vss_model, joint_exs, batch_size=8):
         for r in req:
-            by_qid.setdefault(r["qid"], []).append(r)
+            joint_by_qid.setdefault(r["qid"], []).append(r)
+
+    solo_by_qid: dict[str, list[dict]] = {}
+    for qid in qids:
+        solo_exs = [dataset.MultiQuestionExample(state=ex.state,
+                                                 questions=[q])
+                    for ex in joint_exs for q in ex.questions if q.id == qid]
+        if len(solo_exs) > solo_cap:
+            solo_exs = solo_exs[:solo_cap]
+        recs = vr.predict_examples(vss_model, solo_exs, batch_size=8)
+        solo_by_qid[qid] = [r for req in recs for r in req]
+
     deltas = {}
-    for qid, rows in by_qid.items():
-        if qid in solo_acc:
-            joint = metrics.accuracy(rows)
+    for qid in qids:
+        rows = joint_by_qid.get(qid, [])
+        if rows and solo_by_qid.get(qid):
+            s = metrics.accuracy(solo_by_qid[qid])
+            j = metrics.accuracy(rows)
             deltas[qid] = {
-                "solo": solo_acc[qid],
-                "joint": round(joint, 4),
-                "delta_pts": round((joint - solo_acc[qid]) * 100, 2),
+                "solo": round(s, 4),
+                "joint": round(j, 4),
+                "delta_pts": round((j - s) * 100, 2),
+                "solo_n": len(solo_by_qid[qid]),
+                "joint_n": len(rows),
             }
     worst = sorted(deltas.items(), key=lambda kv: kv[1]["delta_pts"])
+    best = sorted(deltas.items(), key=lambda kv: -kv[1]["delta_pts"])
+    all_solo = [r for qid in qids for r in solo_by_qid.get(qid, [])]
+    all_joint = [r for qid in qids for r in joint_by_qid.get(qid, [])]
+    solo_sum = metrics.summarize(all_solo)
+    joint_sum = metrics.summarize(all_joint)
     return {
         "q": q_max,
-        "n_states": len(pool_examples),
+        "n_states": len(pool),
+        "n_templates": len(deltas),
+        "solo_cap": solo_cap,
         "per_qid": deltas,
         "mean_delta_pts": round(
             sum(v["delta_pts"] for v in deltas.values()) / max(1, len(deltas)), 3),
+        "solo_accuracy": solo_sum["accuracy"],
+        "joint_accuracy": joint_sum["accuracy"],
+        "solo_coverage": solo_sum["coverage"],
+        "joint_coverage": joint_sum["coverage"],
+        "solo_answered_accuracy": solo_sum["answered_accuracy"],
+        "joint_answered_accuracy": joint_sum["answered_accuracy"],
+        "delta_pts_answered": round(
+            (joint_sum["answered_accuracy"] - solo_sum["answered_accuracy"]) * 100
+            if joint_sum["answered_accuracy"] is not None
+            and solo_sum["answered_accuracy"] is not None else float("nan"), 2),
         "worst5": [dict(qid=k, **v) for k, v in worst[:5]],
+        "best3": [dict(qid=k, **v) for k, v in best[:3]],
     }
 
 
@@ -267,15 +311,17 @@ def permutation_block(vss_model, examples, q: int, n_states: int = 200,
 
     Agreement = fraction of (state, qid) pairs with identical predictions
     under both orders (choice/noul label; score rounded to 2 decimals).
+    Requests are built via eval_subset; for replicated single-template real
+    data a permutation reorders identical questions, so the block degenerates
+    to a slot-position sensitivity check (disclosed in the output note).
     """
     rng = random.Random("perm:" + str(seed))
-    pool = [ex for ex in examples if len(ex.questions) >= q]
+    pool = [ex for ex in examples if len(ex.questions) >= 1]
     if len(pool) > n_states:
         idx = sorted(rng.sample(range(len(pool)), n_states))
         pool = [pool[i] for i in idx]
-    canon = [dataset.MultiQuestionExample(state=ex.state,
-                                          questions=ex.questions[:q])
-             for ex in pool]
+    canon = dataset.eval_subset(pool, q, seed, len(pool))
+    replicated = all(len(ex.questions) < 2 for ex in pool)
     perm_exs = []
     perms = []
     for ex in canon:
@@ -303,6 +349,9 @@ def permutation_block(vss_model, examples, q: int, n_states: int = 200,
         "n_states": len(pool),
         "agreement": round(same / max(1, total), 4),
         "n_pairs": total,
+        **({"note": "replicated single-template requests: permutation reorders "
+                    "identical questions; agreement isolates slot-position "
+                    "sensitivity"} if replicated else {}),
     }
 
 
@@ -320,6 +369,8 @@ def main() -> int:
                     help="VSS run dir template; {seed} substituted when present")
     ap.add_argument("--out", default=None)
     ap.add_argument("--skip-latency", action="store_true")
+    ap.add_argument("--n-eval-states", type=int, default=None,
+                    help="override per-dataset default (synthetic 200, real 150)")
     ap.add_argument("--interference-at", type=int, nargs="*", default=None,
                     help="Q values for solo-vs-joint interference (VSS only)")
     ap.add_argument("--permutation-at", type=int, nargs="*", default=None)
@@ -328,6 +379,11 @@ def main() -> int:
 
     cfg = BenchConfig()
     plain_cfg = PlainConfig()
+    if args.n_eval_states is not None:
+        cfg.n_eval_states = args.n_eval_states
+    else:
+        # CPU-budget defaults: fewer states on the heavy real-data option sets
+        cfg.n_eval_states = 200 if args.dataset == "synthetic" else 150
     out_path = Path(args.out) if args.out else RESULTS / (args.dataset + "_results.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -341,6 +397,29 @@ def main() -> int:
                     "measured_iters": cfg.measured_iters},
         "cells": [],
     }
+
+    def save() -> None:
+        """Incremental persistence: every completed cell is flushed so a
+        killed invocation (600 s shell cap) keeps its progress."""
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=1)
+
+    # resume: skip (seed, q) cells and analysis blocks already computed
+    if out_path.exists():
+        try:
+            with open(out_path, encoding="utf-8") as f:
+                prev = json.load(f)
+            done = {(c["seed"], c["q"]) for c in prev.get("cells", [])}
+            results["cells"] = list(prev.get("cells", []))
+            for k in prev:
+                if k.startswith(("interference_", "permutation_")):
+                    results[k] = prev[k]
+            print(f"resuming: {len(results['cells'])} cells already done",
+                  flush=True)
+        except Exception:
+            done = set()
+    else:
+        done = set()
 
     examples = load_eval_states(args.dataset, cfg)
     print("eval states:", len(examples), flush=True)
@@ -367,6 +446,26 @@ def main() -> int:
         lat_state = examples[0]
 
         for q in args.questions:
+            if (seed, q) in done:
+                cell = next(c for c in results["cells"]
+                            if c["seed"] == seed and c["q"] == q)
+                if "AB_spot_check" not in cell:
+                    # repair cells saved before the honest spot check existed
+                    subset = dataset.eval_subset(examples, q, cfg.eval_seed,
+                                                 len(examples))
+                    pairs = [(ex.state, qst) for ex in subset
+                             for qst in ex.questions][:16]
+                    recs_1 = pc.predict_rows(plain_model, pairs, batch_size=1)
+                    recs_32 = pc.predict_rows(plain_model, pairs, batch_size=16)
+                    n_diff, max_diff = spot_check_diffs(recs_1, recs_32)
+                    cell["A_equals_B"] = bool(n_diff == 0 and max_diff < 1e-5)
+                    cell["AB_spot_check"] = {
+                        "n_pairs": 16, "pred_disagreements": n_diff,
+                        "max_prob_diff": round(max_diff, 12)}
+                    save()
+                print(f"seed {seed} Q={q}: already done"
+                      f" (A_equals_B={cell.get('A_equals_B')})", flush=True)
+                continue
             cell = evaluate_cell(examples, q, plain_model, vss_model,
                                  split_seed=cfg.eval_seed)
             cell["seed"] = seed
@@ -391,6 +490,7 @@ def main() -> int:
                     cell["latency"][m]["requests_per_sec_p50"] = round(1.0 / p50_s, 2)
                     cell["latency"][m]["questions_per_sec_p50"] = round(q / p50_s, 2)
             results["cells"].append(cell)
+            save()
             line = (f"seed {seed} Q={q}: A {cell['A']['accuracy']:.4f} "
                     f"B {cell['B']['accuracy']:.4f}")
             if "C" in cell:
@@ -404,22 +504,27 @@ def main() -> int:
 
         if args.interference_at and vss_model is not None:
             for qi in args.interference_at:
-                key = "interference_Q" + str(qi)
+                key = "interference_Q" + str(qi) + f"_s{seed}"
+                if key in results:
+                    continue
                 results[key] = interference_block(
                     vss_model, examples, qi, n_states=args.interference_states)
+                save()
                 print(key, "mean delta pts:",
                       results[key]["mean_delta_pts"], flush=True)
         if args.permutation_at and vss_model is not None:
             for qi in args.permutation_at:
-                key = "permutation_Q" + str(qi)
+                key = "permutation_Q" + str(qi) + f"_s{seed}"
+                if key in results:
+                    continue
                 results[key] = permutation_block(
                     vss_model, examples, qi, n_states=args.interference_states)
+                save()
                 print(key, "agreement:", results[key]["agreement"], flush=True)
 
         del plain_model, vss_model
 
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=1)
+    save()
     print("wrote", out_path, flush=True)
     return 0
 

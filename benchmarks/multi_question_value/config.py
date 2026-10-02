@@ -37,16 +37,20 @@ class PlainConfig:
 @dataclass
 class BenchConfig:
     # synthetic task
-    n_synthetic_states: int = 4000
+    n_synthetic_states: int = 800
     synth_question_pool: int = SYNTH_QUESTION_POOL
     # real datasets use their existing converted JSONL under data/
     # evaluation
     question_counts: list[int] = field(default_factory=lambda: list(QUESTION_COUNTS))
-    n_eval_states: int = 500
+    n_eval_states: int = 300
     eval_seed: int = 42
-    # latency
-    warmup_iters: int = 30
-    measured_iters: int = 100
+    # latency: largest practical on CPU — one iteration is a FULL request
+    # (Q sequential forwards for mode A), so 5 warmup + 20 measured already
+    # costs minutes per (Q, mode); percentiles are reported over the 20
+    warmup_iters: int = 5
+    measured_iters: int = 20
+    # interference / permutation analyses
+    n_interference_states: int = 100
     # environment bookkeeping (filled at runtime)
     torch_version: str = ""
     torch_threads: int = 0

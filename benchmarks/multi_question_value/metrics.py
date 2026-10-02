@@ -20,6 +20,7 @@ Definitions match the repository's existing calibration audit
 """
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
 
@@ -199,13 +200,29 @@ def risk_coverage(records: list[dict], coverage_fractions: list[float]) -> dict:
 
 # ------------------------------------------------------------------ aggregate
 
+def answered_accuracy(records: list[dict]) -> float:
+    """Accuracy on abstained=false questions (selective-predictor view).
+
+    For a system that never abstains (plain) this equals accuracy; for VSS it
+    is the accuracy actually delivered on answered questions. Reported next to
+    coverage/abstention so the headline accuracy is never read alone.
+    """
+    ans = [r for r in records if not r.get("abstained", False)]
+    if not ans:
+        return float("nan")
+    return sum(1 for r in ans if r["correct"]) / len(ans)
+
+
 def summarize(records: list[dict]) -> dict:
     """Standard per-question summary block for one (mode, Q, seed) cell."""
     if not records:
         return {"n": 0}
+    n_abs = sum(1 for r in records if r.get("abstained", False))
     return {
         "n": len(records),
         "accuracy": accuracy(records),
+        "coverage": round(1.0 - n_abs / len(records), 4),
+        "answered_accuracy": round(answered_accuracy(records), 4),
         "macro_f1": macro_f1(records),
         "ece": ece([r["conf"] for r in records], [r["correct"] for r in records]),
         "brier": brier(records),
@@ -213,3 +230,37 @@ def summarize(records: list[dict]) -> dict:
         "per_type_accuracy": per_type_accuracy(records),
         "score_mae": score_mae(records),
     }
+
+
+def refresh_selective_fields(path: str) -> None:
+    """Backfill coverage/answered_accuracy into an existing results JSON.
+
+    Records are not persisted, so these are recomputed from the stored
+    scalars: plain never abstains by construction, and VSS's overall
+    answered-accuracy follows from accuracy and its stored abstention rate.
+    (Interference/permutation/spot-check keys pass through untouched.)
+    """
+    import os
+
+    tmp = path + ".tmp"
+    d = json.load(open(path, encoding="utf-8"))
+    for c in d.get("cells", []):
+        for key in ("A", "B", "C"):
+            m = c.get(key)
+            if not isinstance(m, dict) or "accuracy" not in m:
+                continue
+            if key == "C":
+                ab = c.get("C_abstention_rate", 0.0)
+                cov = round(1.0 - ab, 4)
+                ans_acc = (m["accuracy"] / cov) if cov > 0 else float("nan")
+                m["coverage"] = cov
+                m["answered_accuracy"] = (round(ans_acc, 4)
+                                          if ans_acc == ans_acc else None)
+            else:
+                m["coverage"] = 1.0
+                m["answered_accuracy"] = round(m["accuracy"], 4)
+    fd, tmpf = None, tmp
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=1)
+    os.replace(tmp, path)
+    print("refreshed", path)

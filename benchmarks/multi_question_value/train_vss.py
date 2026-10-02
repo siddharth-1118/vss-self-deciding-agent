@@ -22,6 +22,11 @@ sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(HERE))
 
 import dataset  # noqa: E402
+import torch  # noqa: E402
+
+# measured fastest on this box (6 physical cores)
+torch.set_num_threads(6)
+
 from vss.data.schema import dump_jsonl  # noqa: E402
 from vss.model.config import VSSConfig  # noqa: E402
 from vss.model.vss_model import VSSModel  # noqa: E402
@@ -72,6 +77,9 @@ def main() -> int:
 
     train_ex = load_jsonl(str(train_path))
     valid_ex = load_jsonl(str(valid_path))
+    # per-epoch validation slice (checkpoint-selection signal only; keeps the
+    # epoch + eval inside the 600 s shell cap; benchmark.py evaluates properly)
+    valid_ex = valid_ex[:100]
     print(f"train {len(train_ex)} valid {len(valid_ex)}", flush=True)
 
     model = VSSModel(base.model)

@@ -46,6 +46,10 @@ class GoldQuestion:
     min: float | None = None
     max: float | None = None
     answer: str | int | float | None = None
+    # serialize choice blocks WITHOUT option text (schema stays intact for
+    # masking/gold/metrics).  Mirrors the repository's shipped VSS configs
+    # (header_only_choice: true); keeps every system on the same token stream.
+    header_only_choice: bool = False
 
     def as_request(self) -> dict:
         """Request-side dict for VSS/serialization (no answer)."""
@@ -270,7 +274,16 @@ def build_pool() -> list[SynthQuestionSpec]:
 
 
 POOL: list[SynthQuestionSpec] = build_pool()
-N_TRAIN_QUESTIONS = 16  # per training state (the distinct base templates)
+# Training states carry 8 of the 16 base templates, selected by a fixed
+# rotation (start = (idx * 8) % 16) so every template appears equally often
+# across a split. This is the CPU-budget knob: the plain classifier trains
+# per (state, question) row, so rows/epoch = states x 8. Eval states always
+# carry the full 64-instance pool, so both systems are evaluated on the
+# same question counts including counts never seen in training (Q > 8),
+# which is exactly the multi-question generalization the qmask architecture
+# claims to provide.
+N_TRAIN_QUESTIONS = 8
+N_BASE = 16
 
 
 def _realize(spec: SynthQuestionSpec, facts: dict) -> GoldQuestion:
@@ -284,11 +297,17 @@ def _realize(spec: SynthQuestionSpec, facts: dict) -> GoldQuestion:
     )
 
 
-def make_synthetic_example(rng: random.Random, split: str) -> MultiQuestionExample:
-    """One synthetic example: training states carry the 16 base templates,
-    eval states carry the full ordered 64-instance pool."""
+def make_synthetic_example(rng: random.Random, split: str,
+                           idx: int = 0) -> MultiQuestionExample:
+    """One synthetic example: training/validation states carry 8 base
+    templates chosen by deterministic rotation; test states carry the full
+    ordered 64-instance pool."""
     facts = sample_facts(rng)
-    specs = POOL if split == "test" else POOL[:N_TRAIN_QUESTIONS]
+    if split == "test":
+        specs = POOL
+    else:
+        start = (idx * N_TRAIN_QUESTIONS) % N_BASE
+        specs = [POOL[(start + k) % N_BASE] for k in range(N_TRAIN_QUESTIONS)]
     questions = [_realize(s, facts) for s in specs]
     ex = MultiQuestionExample(state=dict(facts), questions=questions)
     ex.verify_gold()
@@ -311,7 +330,7 @@ def generate_synthetic(n_states: int, seed: int, split: str,
         return load_synthetic(split)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     rng = random.Random(seed)
-    examples = [make_synthetic_example(rng, split) for _ in range(n_states)]
+    examples = [make_synthetic_example(rng, split, idx=i) for i in range(n_states)]
     with open(path, "w", encoding="utf-8") as f:
         for ex in examples:
             f.write(json.dumps(ex.to_training_dict(), separators=(",", ":")) + "\n")
@@ -356,14 +375,15 @@ def load_real(name: str, split: str) -> list[MultiQuestionExample]:
     with open(path, encoding="utf-8") as f:
         for line in f:
             raw = json.loads(line)
-            qs = [
-                GoldQuestion(
+            qs = []
+            for q in raw["questions"]:
+                ex_q = GoldQuestion(
                     id=q["id"], type=q["type"],
                     options=tuple(q["options"]) if q.get("options") else None,
                     min=q.get("min"), max=q.get("max"), answer=q["answer"],
+                    header_only_choice=True,
                 )
-                for q in raw["questions"]
-            ]
+                qs.append(ex_q)
             ex = MultiQuestionExample(state=raw["state"], questions=qs)
             ex.verify_gold()
             out.append(ex)
@@ -393,10 +413,17 @@ def eval_subset(examples: list[MultiQuestionExample], q: int, split_seed: int,
     out: list[MultiQuestionExample] = []
     for ex in examples:
         qs = ex.questions[:q]
-        if q > len(ex.questions):  # real data: replicate with distinct ids
+        if q > len(ex.questions):
+            # real data: replicate the single real question. Slot 0 KEEPS the
+            # canonical trained id (renaming it would push the model OOD on
+            # question text and measure id sensitivity, not co-asking);
+            # extra copies get unique suffixed ids because the inference
+            # engine keys answers by id within a request.
             base = ex.questions
             qs = [
-                replace(base[i % len(base)], id=f"{base[i % len(base)].id}#{i}")
+                base[i % len(base)] if i < len(base)
+                else replace(base[i % len(base)],
+                             id=f"{base[i % len(base)].id}#{i}")
                 for i in range(q)
             ]
         out.append(MultiQuestionExample(state=ex.state, questions=qs))

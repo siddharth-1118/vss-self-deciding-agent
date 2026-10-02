@@ -251,17 +251,19 @@ class Trainer:
         partial: bool = False,
         batch_index: int = 0,
     ) -> None:
-        torch.save(
-            {
-                "model": self.model.state_dict(),
-                "optimizer": self.opt.state_dict(),
-                "epoch": epoch,
-                "global_step": global_step,
-                "best_loss": best_loss,
-                "partial": partial,
-                "batch_index": batch_index,
-                "seed": self.tcfg.seed,
-                "config": self.config.to_dict(),
-            },
-            path,
-        )
+        # atomic write: a killed process (600s shell cap) can truncate a plain
+        # torch.save mid-write; write tmp then replace so last.pt stays loadable
+        payload = {
+            "model": self.model.state_dict(),
+            "optimizer": self.opt.state_dict(),
+            "epoch": epoch,
+            "global_step": global_step,
+            "best_loss": best_loss,
+            "partial": partial,
+            "batch_index": batch_index,
+            "seed": self.tcfg.seed,
+            "config": self.config.to_dict(),
+        }
+        tmp = path.with_suffix(".pt.tmp")
+        torch.save(payload, tmp)
+        tmp.replace(path)

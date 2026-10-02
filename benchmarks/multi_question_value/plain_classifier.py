@@ -112,7 +112,11 @@ class PlainClassifier(nn.Module):
         assert self.tokenizer is not None, "fit tokenizer first"
         seqs = []
         for state, q in pairs:
-            req = dict(q.as_request())
+            req = q.as_request()
+            if getattr(q, "header_only_choice", False):
+                # same canonical token stream VSS consumes (option text is
+                # stripped by the VSS model's own forward — see vss_model.py)
+                req = {**req, "header_only_choice": True}
             text = serialize_example(state, [req])
             seqs.append(self.tokenizer.encode(text))
         T = max(len(s) for s in seqs)
@@ -174,13 +178,26 @@ def _batch_loss(
     losses: list[torch.Tensor] = []
     for i, (state, q) in enumerate(pairs):
         if q.type == "choice":
+            if getattr(q, "header_only_choice", False):
+                # Full-inventory CE over the entire head (the U1 ablation's
+                # proven-strong plain-head recipe), matching the eval-time
+                # softmax over the row's declared options.  Do NOT restrict
+                # the support to the train row's declared subset: with
+                # header-only text the head cannot know the subset, and train
+                # rows (15 opts) vs eval rows (151 opts) would be different
+                # tasks — that mismatch is what collapsed the v1 baseline.
+                logits = out["choice"][i].unsqueeze(0)
+                tgt = label_to_idx[q.answer]
+                losses.append(F.cross_entropy(
+                    logits, torch.tensor([tgt], device=device)))
+                continue
             opts = list(q.options or ())
             allowed = [label_to_idx[o] for o in opts]
             if q.answer == ABSTAIN:
                 allowed.append(label_to_idx[ABSTAIN])
-                tgt = len(opts)          # local index of ABSTAIN in the mask
+                tgt = len(opts)      # local index of ABSTAIN in the mask
             else:
-                tgt = opts.index(q.answer)  # local index within declared options
+                tgt = opts.index(q.answer)  # local index within options
             logits = out["choice"][i, allowed].unsqueeze(0)
             losses.append(F.cross_entropy(
                 logits, torch.tensor([tgt], device=device)))
@@ -223,8 +240,13 @@ def train_plain(
     # fit tokenizer on training texts (idempotent; keeps loaded vocab)
     if model.tokenizer is None:
         tok = VSSTokenizer(vocab_size=cfg.vocab_size, hash_buckets=cfg.hash_buckets)
-        texts = [serialize_example(ex.state, [q.as_request()])
-                 for ex in train_examples for q in ex.questions]
+        texts = []
+        for ex in train_examples:
+            for q in ex.questions:
+                req = q.as_request()
+                if getattr(q, "header_only_choice", False):
+                    req = {**req, "header_only_choice": True}
+                texts.append(serialize_example(ex.state, [req]))
         tok.fit(texts[:20000])
         model.tokenizer = tok
 
@@ -284,6 +306,14 @@ def train_plain(
 
     history: list[dict] = []
     model.train()
+
+    def _save(path: Path, payload: dict) -> None:
+        """Atomic progress checkpoint: a killed process can truncate a plain
+        torch.save, so write to tmp and replace (last.pt stays loadable)."""
+        tmp = path.with_suffix(".pt.tmp")
+        torch.save(payload, tmp)
+        tmp.replace(path)
+
     for epoch in range(start_epoch, cfg.epochs):
         t0 = time.time()
         ep_batches = list(batches(train_rows, cfg.batch_size, seed + epoch))
@@ -303,11 +333,11 @@ def train_plain(
             ep_loss += float(loss)
             nb += 1
             if nb % save_every == 0:
-                torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
-                            "sched": sched.state_dict(), "step": global_step,
-                            "epoch": epoch, "best_val": best_val,
-                            "partial": True, "batch_index": bi + 1},
-                           ckpt / "last.pt")
+                _save(ckpt / "last.pt",
+                      {"model": model.state_dict(), "opt": opt.state_dict(),
+                       "sched": sched.state_dict(), "step": global_step,
+                       "epoch": epoch, "best_val": best_val,
+                       "partial": True, "batch_index": bi + 1})
             if nb % log_every == 0:
                 print(f"  epoch {epoch} batch {nb}/{len(ep_batches)} "
                       f"loss {float(loss):.4f}", flush=True)
@@ -319,14 +349,15 @@ def train_plain(
               f"({history[-1]['seconds']}s)", flush=True)
         is_best = val < best_val
         best_val = min(best_val, val)
-        torch.save({"model": model.state_dict(), "opt": opt.state_dict(),
-                    "sched": sched.state_dict(), "step": global_step,
-                    "epoch": epoch, "best_val": best_val,
-                    "partial": False, "batch_index": 0},
-                   ckpt / "last.pt")
+        _save(ckpt / "last.pt",
+              {"model": model.state_dict(), "opt": opt.state_dict(),
+               "sched": sched.state_dict(), "step": global_step,
+               "epoch": epoch, "best_val": best_val,
+               "partial": False, "batch_index": 0})
         if is_best:
-            torch.save({"model": model.state_dict(), "epoch": epoch,
-                        "val_loss": val}, ckpt / "best.pt")
+            _save(ckpt / "best.pt",
+                  {"model": model.state_dict(), "epoch": epoch,
+                   "val_loss": val})
 
     torch.save({"model": model.state_dict(), "epoch": cfg.epochs - 1,
                 "val_loss": best_val, "label_to_idx": label_to_idx},
@@ -337,15 +368,25 @@ def train_plain(
 
 
 def load_plain(ckpt_dir: str, cfg: PlainConfig | None = None) -> PlainClassifier:
-    """Rebuild a trained plain classifier from final.pt + vocab.json."""
+    """Rebuild a trained plain classifier.
+
+    Checkpoint selection mirrors the VSS protocol: best validation-loss
+    checkpoint (best.pt) when present, else the final epoch. Label inventory
+    comes from final.pt; vocab.json must exist in the dir.
+    """
     ckpt = Path(ckpt_dir)
-    st = torch.load(ckpt / "final.pt", weights_only=False, map_location="cpu")
-    label_to_idx: dict[str, int] = st["label_to_idx"]
+    st_final = torch.load(ckpt / "final.pt", weights_only=False, map_location="cpu")
+    label_to_idx: dict[str, int] = st_final["label_to_idx"]
     cfg = cfg or PlainConfig()
     model = PlainClassifier(cfg, n_labels=len(label_to_idx),
                             with_abstain=ABSTAIN in label_to_idx)
     model.attach_labels(sorted(label_to_idx, key=label_to_idx.get))
-    model.load_state_dict(st["model"])
+    best_path = ckpt / "best.pt"
+    if best_path.exists():
+        st = torch.load(best_path, weights_only=False, map_location="cpu")
+        model.load_state_dict(st["model"])
+    else:
+        model.load_state_dict(st_final["model"])
     model.tokenizer = VSSTokenizer.load(ckpt / "vocab.json")
     model.eval()
     return model
