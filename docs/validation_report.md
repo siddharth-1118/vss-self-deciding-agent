@@ -369,6 +369,51 @@ abstention calibration that costs 15–17 pts of real-data accuracy. VSS is
 > §17.5 is the current result. The accuracy verdict (plain wins 35/35 cells)
 > survived the fix.
 
+## 17.6 Third pass — the convergence audit overturned the verdict
+
+The §17.4 decision listed "fix the defects, then re-run at a matched budget".
+A pre-experiment audit of the training pipeline (`docs/convergence_audit.md`)
+found that the *training protocol itself* was defective, so §17.5's
+"plain wins, still not scale" verdict rests on a broken comparison.
+
+Three stacked defects, all fixed and regression-tested:
+
+1. **The synthetic splits were nested prefixes of one another.**
+   `generate_synthetic` called `random.Random(seed)` for every split, so
+   `validation == train[:300]` and `test[:800] == train` — 100% of the selection
+   split and 80% of the test split were training states, and 21 of the 35 cells
+   were scored largely on training data.
+2. **A fixed 150-step warmup consumed 75% of VSS's 200-step schedule**, and
+   `lr_lambda(0)` returned 0 so the first update was a no-op.
+3. **VSS received 8× fewer optimizer steps than the baseline** (200 vs 1600)
+   because "8 epochs" means very different things when one step carries a whole
+   multi-question state versus a single (state, question) row.
+
+With clean splits, the fixed schedule, early stopping, and matched
+(state, question) presentations, VSS converges properly (validation minimum at
+epoch 12, patience fires, gradient norms 1.1–3.7, no overfitting) and the two
+systems **tie**:
+
+| system | steps | best choice acc | best noul acc | best score MAE | wall s |
+|---|---:|---:|---:|---:|---:|
+| VSS | 400 | 0.8700 | 0.9550 | 0.1562 | 2953 |
+| plain | 2,200 | 0.8675 | 0.9513 | 0.1543 | 4056 |
+
+Re-running the synthetic benchmark with those checkpoints: a tie at Q=1–4,
+plain ahead by 3.4–6.9 pts at Q=8–50 (mostly VSS abstaining — its answered
+accuracy is 0.986 at 87% coverage at Q=8). VSS keeps its latency advantage
+(2.7× vs *batched* at Q=50) and gains a decisive one on selective prediction:
+its risk-coverage curve dominates plain's at every coverage ≤0.90, while
+plain's confidence is nearly uninformative.
+
+**Everything real-data remains un-re-measured** and is withdrawn as
+known-suspect, because the audit found a fourth defect — stable-RoPE positions
+built from example 0's state length — that is inert on synthetic (uniform 32-token
+states) but live on CLINC150 (7–24 tokens) and Banking77 (10–30 tokens).
+
+Full analysis: `docs/convergence_report.md`. Claims D13 withdrawn, D21–D23 added,
+U2 reopened.
+
 ## 17.5 Second pass — the two "defects" were bugs, and the verdict survived
 
 Acting on §17.4's "fix the defects first" item found **two implementation

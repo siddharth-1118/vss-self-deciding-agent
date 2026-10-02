@@ -91,10 +91,20 @@ def lr_selection(recs: list[dict]) -> str:
 
 
 def step_matched(recs: list[dict]) -> str:
-    """Systems compared at the same optimizer-step budget."""
-    lines = ["| dataset | steps | system | seeds | best val loss (mean ± sd) | "
-             "choice acc (mean ± sd) | params | wall s/run |",
-             "|---|---:|---|---:|---:|---:|---:|---:|"]
+    """Systems compared at the same optimizer-step budget.
+
+    NOTE: the validation *loss* column is NOT comparable across systems. VSS's
+    objective includes a calibration-head BCE term and a soft-target ordinal
+    term that the plain baseline's `_batch_loss` does not have, so the same
+    numeric value means different things. The per-task metrics (choice
+    accuracy, noul accuracy, score MAE) ARE comparable: both trainers score
+    choice rows by argmax over the row's declared options plus ABSTAIN.
+    """
+    lines = ["*(validation loss is not cross-system comparable -- see docstring; "
+             "choice accuracy is)*", "",
+             "| dataset | steps | passes | system | seeds | best val loss | "
+             "best choice acc | best noul acc | best score MAE | params | wall s/run |",
+             "|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|"]
 
     def stats(vals):
         vals = [v for v in vals if v is not None and not math.isnan(v)]
@@ -104,19 +114,31 @@ def step_matched(recs: list[dict]) -> str:
         sd = math.sqrt(sum((v - m) ** 2 for v in vals) / (len(vals) - 1)) if len(vals) > 1 else 0.0
         return f"{m:.4f} ± {sd:.4f}"
 
+    def best_of(r, key):
+        vals = [e.get(key) for e in r["history"] if e.get(key) is not None]
+        if not vals:
+            return float("nan")
+        return min(vals) if key == "score_mae" else max(vals)
+
     keys = sorted({(r["dataset"], r["steps"], r["system"]) for r in recs})
     for ds, steps, system in keys:
         sel = [r for r in recs
                if r["dataset"] == ds and r["system"] == system
                and abs(r["steps"] - steps) <= max(2, 0.05 * steps)]
+        if not sel:
+            continue
         best = [min(e.get("eval_loss", e.get("val_loss")) for e in r["history"])
                 for r in sel]
-        acc = [r["history"][-1].get("choice_accuracy") for r in sel]
+        acc = [best_of(r, "choice_accuracy") for r in sel]
+        noul = [best_of(r, "noul_accuracy") for r in sel]
+        mae = [best_of(r, "score_mae") for r in sel]
         seeds = ",".join(str(r["seed"]) for r in sel)
         params = f"{sel[0]['params']:,}"
         wall = sum(r.get("wall_seconds", 0) for r in sel) / max(1, len(sel))
-        lines.append(f"| {ds} | {steps} | {system} | {len(sel)} ({seeds}) | "
-                     f"{stats(best)} | {stats(acc)} | {params} | {wall:.0f} |")
+        passes = max((r["epochs_run"] for r in sel), default=0)
+        lines.append(f"| {ds} | {steps} | {passes} | {system} | {len(sel)} ({seeds}) | "
+                     f"{stats(best)} | {stats(acc)} | {stats(noul)} | {stats(mae)} "
+                     f"| {params} | {wall:.0f} |")
     return "\n".join(lines)
 
 

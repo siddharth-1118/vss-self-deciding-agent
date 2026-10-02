@@ -1,5 +1,29 @@
 # Multi-Question Value Test — Does VSS Justify Its Architecture?
 
+> ## ⚠️ WITHDRAWN IN PART — read `docs/convergence_report.md` first
+>
+> A later convergence audit found that this experiment's **training protocol**
+> was defective, so several conclusions below do not survive it. The historical
+> numbers are kept here unchanged for the audit trail, but:
+>
+> - the synthetic splits were **nested prefixes of one another**
+>   (`validation == train[:300]`, `test[:800] == train`), so 100% of the model
+>   selection split and 80% of the synthetic test split were training states;
+> - VSS's synthetic schedule was 200 optimizer steps of which **150 were
+>   warmup** (75%), so it never left the LR ramp;
+> - VSS received **8× fewer optimizer steps** than the plain baseline (200 vs
+>   1600) because a VSS step carries a whole multi-question state;
+> - a fourth defect (stable-RoPE positions taken from example 0's state length)
+>   is **live on CLINC150 and Banking77**, so the real-data interference,
+>   order-invariance and selective-accuracy numbers below are known-suspect and
+>   are withdrawn pending a re-run.
+>
+> Re-measured on clean splits with converged, presentation-matched models, the
+> synthetic comparison is a **tie at Q=1–4**, plain ahead by 3.4–6.9 pts at
+> Q=8–50, and VSS ahead on selective prediction and on latency against a
+> *batched* baseline. Claims D13 (plain wins 35/35) is withdrawn; D21–D23 added;
+> U2 reopened.
+
 **Status:** complete, **second pass** (post-defect-fix). 35 (seed, Q) cells
 across 3 datasets, 15 interference/permutation analyses, 65/65 tests passing.
 All numbers below are measured, not estimated.

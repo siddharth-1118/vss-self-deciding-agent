@@ -1,0 +1,38 @@
+{
+ "dataset": "synthetic",
+ "q": 8,
+ "n_questions": 1600,
+ "vss_root": "runs/convergence/vss-synthetic-s1-lr0.0003-st400",
+ "plain_root": "runs/convergence/plain-synthetic-s1-lr0.0003-st3200-presmatch",
+ "plain_curve": {
+  "1.00": 0.9306,
+  "0.95": 0.9276,
+  "0.90": 0.9236,
+  "0.85": 0.9199,
+  "0.80": 0.9187,
+  "0.70": 0.9598,
+  "0.60": 0.9812,
+  "0.50": 0.9962,
+  "0.40": 1.0,
+  "0.30": 1.0,
+  "0.20": 1.0
+ },
+ "vss_curve": {
+  "1.00": 0.8644,
+  "0.95": 0.9099,
+  "0.90": 0.9604,
+  "0.85": 0.9919,
+  "0.80": 0.9961,
+  "0.70": 1.0,
+  "0.60": 1.0,
+  "0.50": 1.0,
+  "0.40": 1.0,
+  "0.30": 1.0,
+  "0.20": 1.0
+ },
+ "plain_always_on": 0.9306,
+ "vss_gate_coverage": 0.8738,
+ "vss_gate_answered_accuracy": 0.9892703862660944,
+ "plain_answerable_fraction": 1.0,
+ "plain_answered_accuracy": 0.930625
+}

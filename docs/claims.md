@@ -128,16 +128,16 @@ sensitive component. Not directly measured (no ablation of pooling).
 
 ## Unknown
 
-### U2. RESOLVED — VSS does NOT beat the plain-head baseline on multi-question tasks
-Question-masked attention is meant to fix interference exactly (D3 resolution)
-at −2.3 pts solo accuracy. **The multi-question value test answered this: the
-plain classifier wins** — and it still wins after the per-batch mask bug was
-found, fixed, and every VSS checkpoint retrained (D13). See the
-"Multi-question value test" section below (D13–D20) and
-`docs/multi_question_value_report.md`. The single-pass co-asking machinery did
-not beat a plain classifier on per-question accuracy at any Q, on any of the
-three datasets; the architecture is not justified as it stands **at this
-budget**, which is the confound that must be closed next.
+### U2. REOPENED — VSS vs the plain-head baseline on multi-question tasks
+Originally resolved as "plain wins" (D13). **That resolution is withdrawn.** The
+convergence audit found that the comparison ran on a training-set-contaminated
+synthetic split, against a VSS schedule that spent 75% of its steps in warmup,
+with an 8× step-budget advantage given to the baseline. Re-measured properly
+(clean splits, converged, presentation-matched, one seed): the two systems are
+**tied on synthetic at Q=1–4**, plain leads by 3.4–6.9 pts at Q=8–50, and VSS
+wins decisively on selective prediction and single-pass latency. The question is
+now open on two axes: real data (not re-measured — see the audit) and seed
+variance (one seed only). Evidence: `docs/convergence_report.md`.
 
 ### U3. Multi-seed behavior of CLINC150 results
 All CLINC150 numbers are seed 13 only. Banking77 variance was 0.72 pts, but
@@ -176,32 +176,63 @@ the first-pass versions are withdrawn.** Pre-fix numbers are preserved verbatim
 in `results/*_results_prefix.json`; the before/after table is §16.1 of the
 report.
 
-### D13. Plain classifier beats VSS on per-question accuracy — DEMONSTRATED
-At matched training budget (same tokenizer family, same header-only
-serialization, same full-inventory choice head, 8 epochs AdamW, batch 32,
-best-val checkpoint selection, ~10.5M vs 11.2M parameters), the plain
-classifier (systems A/B) beats VSS (system C) on per-question accuracy in
-**all 35 measured (dataset, Q) cells** — synthetic Q∈{1,2,4,8,16,32,50} over
-3 seeds, CLINC150 and Banking77 at Q∈{1,…,50}. Paired bootstrap (1000
-resamples) of C−B is negative everywhere with CIs excluding zero (synthetic
-Q=1 [−0.265,−0.157] → Q=50 [−0.170,−0.151]; CLINC150 Q=50 [−0.258,−0.238];
-Banking77 Q=50 [−0.107,−0.088]). VSS request accuracy reaches 0.000 from Q=16
-on synthetic (all-questions-right requirement); plain decays gracefully.
-**Re-measured after the mask fix with retrained VSS checkpoints, so this is not
-a bug artifact** — it is a statement about this budget, not about the
-architecture (see U2 and the report's §20).
+### D13. ~~Plain classifier beats VSS on per-question accuracy in all 35 cells~~ — WITHDRAWN
+This claim was measured on three stacked defects and does not survive them:
+(1) the synthetic `validation` split was literally `train[:300]` and `test[:800]`
+was `train`, so 100% of the selection split and 80% of the test split were
+training states; (2) VSS's 8-epoch synthetic schedule had only 200 optimizer
+steps of which 150 were warmup, so it never left the LR ramp; (3) the step
+budget handed the plain baseline was 1,600 steps vs VSS's 200 — an 8×
+difference in gradient signal, since VSS back-propagates all questions of a
+state per step and plain one (state, question) row. Re-measured on the corrected
+split with converged, presentation-matched models, the synthetic cells are a
+**tie at Q=1–4** and **plain ahead by 3.4–6.9 pts at Q=8–50**, most of which at
+Q=8–16 is VSS abstaining rather than answering wrongly. See D21. The real-data
+cells were not re-run and are withdrawn pending that work.
+
+### D21. At matched data exposure VSS and the plain classifier are tied on synthetic — DEMONSTRATED (1 seed)
+Converged, early-stopped, identical schedule implementation and LR selection
+(3e-4 for both), matched (state, question) presentations (VSS 400 steps x 8
+questions = 102,400; plain 2,200 steps): best validation choice accuracy
+**0.8700 (VSS) vs 0.8675 (plain)**, noul 0.9550 vs 0.9513, score MAE 0.1562 vs
+0.1543 — tied on all three task types. VSS reaches that point with 5.5x fewer
+optimizer steps and 1.37x less wall-clock time. VSS: 11.16M params, 400 steps,
+2953 s. plain: 10.51M params, 2200 steps, 4056 s. **Single seed** — no variance
+estimate. Validation *loss* is not cross-system comparable (different objectives).
+Evidence: `benchmarks/convergence/runs/*.json`, `benchmarks/convergence/tables.md`,
+`docs/convergence_report.md` §4.
+
+### D22. VSS's confidence is informative where the plain classifier's is not — DEMONSTRATED (synthetic Q=8, 1 seed)
+Both systems scored on one risk-coverage curve (1,600 questions ranked by their
+own confidence). VSS dominates at every coverage <= 0.90: at 0.85 coverage VSS
+is 0.9919 accurate while plain at full coverage is 0.9306. Plain's confidence is
+close to uninformative — dropping its least-confident 10% *lowers* accuracy
+(0.9306 -> 0.9236) — whereas dropping VSS's least-confident 20% raises it from
+0.8644 to 0.9961. At VSS's shipped gate (coverage 0.874) answered accuracy is
+0.9893 vs plain's always-on 0.9306. This corrects the earlier reading that the
+gate was uninformative, which was measured on a starved checkpoint.
+Evidence: `benchmarks/convergence/results/risk_coverage_synthetic_q8.json`.
+
+### D23. Co-asking questions helps rather than harms, once VSS is trained to convergence — DEMONSTRATED (1 seed)
+Paired solo-vs-joint deltas on the clean synthetic split are **positive**:
++8.13 pts at Q=8 (266/800 paired decisions flip) and +6.09 pts at Q=32
+(1,225/3,200 flip). On the pre-fix, pre-retrain runs the same measurement was
++0.31 to +0.88. Permutation agreement 0.955 (Q=8) / 0.988 (Q=32).
+Evidence: `benchmarks/multi_question_value/results/synthetic_fair_results.json`.
 
 ### D14. VSS single-pass latency beats even the BATCHED classifier at high Q — DEMONSTRATED (conditional)
 Synthetic p50 request latency at Q=50: A sequential 745.2 ms, B batched
-267.9 ms, C VSS 109.2 ms → **6.8× vs sequential, 2.5× vs batched**
-(throughput 460 vs 187 questions/s). At Q=1 all three are within 2% of each
-other. The advantage is a function of request length, not question count: on
-CLINC150 and Banking77 (one short question per state) VSS is 1.1× *slower*
-per request and 0.82–0.92× the batched classifier's questions/s. Absolute
-latencies are load-dependent (the post-fix re-run measured 2–3× slower absolute
-values than the pre-fix run); only within-cell ratios are claimed.
+267.9 ms, C VSS 109.2 ms → **6.8× vs sequential, 2.5× vs batched** (idle box).
+Re-measured with converged checkpoints on a contended box: A 1,573 ms, B 465 ms,
+C 174 ms → **9.0× vs sequential, 2.7× vs batched**. At Q=1 all three are within
+a few percent. The advantage is a function of request length, not question
+count: on CLINC150 and Banking77 (one short question per state) VSS was 1.1×
+*slower* per request in the earlier (pre-audit-fix) measurement. Absolute
+latencies are load-dependent — the contended re-run inflated every number by
+~2× — so only within-cell ratios are claimed. **This is the one claim from the
+first value test that survived the convergence audit unchanged.**
 
-### D15. VSS has no measurable cross-question interference on any dataset — DEMONSTRATED (rewritten post-fix)
+### D15. VSS has no measurable cross-question interference on synthetic — DEMONSTRATED (real-data half WITHDRAWN)
 Both arms of the probe now score the **same** `(state, question)` pairs, so the
 assumption-free statistic is `paired_decision_flips`. On synthetic (3 seeds ×
 Q∈{8,32,50}, 27,000 paired decisions) the mean solo→joint delta is
@@ -213,21 +244,23 @@ non-associativity under different padding, not with systematic leakage.
 **The first-pass claim of −16.9/−15.6 pts (CLINC150) and −9.1/−10.5 pts
 (Banking77) real-data interference is withdrawn**: it compared a 100-state solo
 arm against a 200-state joint arm and had 0 paired flips behind the headline
-number.
+number. **The real-data half of this claim is now itself withdrawn** pending
+re-run: audit finding 3 (stable-RoPE positions built from example 0's state
+length) is live on both real datasets, whose state lengths vary (7-24 and 10-30
+tokens) while synthetic's are uniform. With converged synthetic training the
+synthetic delta is *positive* (+8.1 / +6.1 pts, D23).
 
-### D16. VSS's confidence gate selects a more accurate subset — DEMONSTRATED (rewritten post-fix)
-With the shipped threshold (0.55, blend confidence) on CLINC150, VSS's answered
-questions are **77.7% accurate at 53.0% coverage** where the plain classifier is
-65.9% accurate while always answering (Q=50) — an 11.8-pt selective-accuracy
-advantage. The advantage does not transfer to Banking77 at Q=1 (0.857 answered
-vs 0.887 plain) but appears at Q=50 (0.867 vs 0.851).
-**The gate costs nothing in overall accuracy**: sweeping the threshold
-(`results/abstention_sweep.json`), decision accuracy is flat at 0.533
-(CLINC150) and 0.687 (Banking77) across thresholds 0.0–0.55. The first pass's
-"abstention costs 15–17 accuracy points" claim is **retracted** — it was a
-symptom of the mask bug, not a property of the gate. The first pass's 17.5-pt
-selective-accuracy figure is also superseded (it was 85.5% answered @ 66.3%
-coverage on a buggy-mask checkpoint).
+### D16. VSS's confidence gate selects a more accurate subset — DEMONSTRATED, but on synthetic only
+The honest version of this claim is now D22 (a proper risk-coverage comparison
+on synthetic, where VSS dominates at every coverage <= 0.90). The CLINC150 /
+Banking77 numbers previously recorded here (77.7% answered at 53.0% coverage vs
+plain 65.9%) come from checkpoints trained before the convergence audit and are
+**withdrawn pending re-run**, because audit finding 3 is live on those datasets.
+The gate costs nothing in overall decision accuracy: sweeping the threshold
+(`results/abstention_sweep.json`) leaves decision accuracy flat at 0.533
+(CLINC150) and 0.687 (Banking77) across 0.0–0.55. The first pass's "abstention
+costs 15–17 accuracy points" claim is **retracted** — it was a symptom of the
+mask bug.
 
 ### D17. ~~VSS answers are only ~74–79% order-invariant~~ — WITHDRAWN, superseded by D20
 The first pass measured 74–79% agreement under question permutation on distinct
@@ -256,14 +289,15 @@ Effect on measured claims, same-checkpoint where possible: order agreement
 fixed mask moved per-question accuracy 0.573 → 0.760 (Q=1) and 0.429 → 0.754
 (Q=50).
 
-### D20. VSS answers are 96.4–99.3% order-invariant on distinct synthetic questions — DEMONSTRATED (post-fix replacement for D17)
+### D20. VSS answers are 95.5–98.8% order-invariant on distinct synthetic questions — DEMONSTRATED (post-fix replacement for D17)
 After the D19 fix and retraining, permuting distinct synthetic questions within
-one request changes the answer for 0.7–3.6% of (state, question) pairs
-(Q=8: 0.964/0.967/0.966; Q=32: 0.991/0.993/0.991 across seeds; CLINC150
-0.996/0.998, Banking77 0.998/0.999 on replicated requests). The plain
+one request changes the answer for 1.2–4.5% of (state, question) pairs
+(Q=8: 0.964/0.967/0.966; Q=32: 0.991/0.993/0.991 across seeds; with the
+converged seed-1 checkpoint, 0.955 at Q=8 and 0.988 at Q=32). The plain
 classifier is exactly order-invariant by construction. The residual
-disagreement carries no consistent direction (see D15), which is consistent
-with fp32 non-associativity rather than a slot-position effect.
+disagreement carries no systematic sign. The CLINC150 (0.996/0.998) and
+Banking77 (0.998/0.999) figures come from pre-audit-fix code and are
+**withdrawn** — audit finding 3 is live on those datasets.
 
 ---
 
@@ -275,17 +309,17 @@ with fp32 non-associativity rather than a slot-position effect.
   (D5). The blend confidence works, but through top-prob, not head signal.
 - "One forward pass answers N questions" is true at N=1 and false as an
   accuracy-preserving claim at large N (D3, D10).
-- **VSS is NOT validated as an architecture.** The multi-question value test
-  found the plain classifier ahead on accuracy in 35/35 cells (D13) — measured
-  on defect-free code with retrained checkpoints. The specialized architecture
-  is not justified over a plain classifier called once per question at this
-  budget; only the single-pass latency mechanism (D14), the verified absence of
-  interference (D15) and the selective-accuracy gate (D16) survive as genuine,
-  narrower benefits.
-- **VSS is NOT ready to scale to 52M+ parameters, but not for the reason first
-  stated.** The order-sensitivity (D17) and real-data interference (D15)
-  objections were implementation bugs and are withdrawn. What remains is the
-  accuracy gap (D13) *confounded by an unconverged VSS training budget* — its
-  synthetic validation loss was still descending at the 8-epoch cap while plain
-  had plateaued. The gap is therefore a statement about this budget, and the
-  budget must be closed before any scaling decision.
+- **VSS is NOT validated as an architecture — and neither is it refuted.**
+  The first value test's "plain ahead in 35/35 cells" is withdrawn (D13). What
+  survives is a *tie* on synthetic accuracy at matched data exposure (D21), a
+  loss at Q≥32 (D21/D13), and two genuine wins: informative selective prediction
+  (D22) and single-pass latency against a *batched* baseline (D14). One seed,
+  synthetic only.
+- **VSS is NOT ready to scale to 52M+ parameters.** Not because it lost — the
+  loss claim is withdrawn — but because the evidence is one seed on one synthetic
+  dataset, and every real-data number predates a fix (audit finding 3) that is
+  demonstrably live on those datasets. Scaling is not licensed by a tie.
+- **The real-data value test is NOT re-measured.** CLINC150 and Banking77
+  results in this file were produced before the convergence audit and before the
+  RoPE position fix; their order-invariance, interference and selective-accuracy
+  figures are withdrawn as known-suspect, not as disproven.
