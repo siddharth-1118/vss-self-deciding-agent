@@ -1,0 +1,14 @@
+eval states: 150
+seed 13: plain=runs/mqv-plain-banking77-s13 vss=runs/mqv-vss-banking77-s13 (cold 0.1s / 0.2s)
+seed 13 Q=1: A 0.8867 B 0.8867 C 0.5733 | p50ms A 12.43 B 12.68 C 14.97
+seed 13 Q=2: A 0.7967 B 0.7967 C 0.3467 | p50ms A 12.69 B 12.97 C 15.74
+seed 13 Q=4: A 0.8067 B 0.8067 C 0.3950 | p50ms A 12.14 B 12.26 C 14.13
+seed 13 Q=8: A 0.7900 B 0.7900 C 0.4142 | p50ms A 15.19 B 14.72 C 18.13
+seed 13 Q=16: A 0.8254 B 0.8254 C 0.4242 | p50ms A 11.68 B 13.18 C 15.04
+seed 13 Q=32: A 0.8423 B 0.8423 C 0.4231 | p50ms A 12.69 B 12.57 C 16.0
+seed 13 Q=50: A 0.8512 B 0.8512 C 0.4288 | p50ms A 14.12 B 13.31 C 15.62
+interference_Q8_s13 mean delta pts: -10.0
+interference_Q32_s13 mean delta pts: -9.33
+permutation_Q8_s13 agreement: 0.9225
+permutation_Q32_s13 agreement: 0.9556
+wrote benchmarks\multi_question_value\results\banking77_results.json

@@ -1,0 +1,34 @@
+{
+ "system": "plain",
+ "dataset": "synthetic",
+ "seed": 1,
+ "epochs": 8,
+ "batch_size": 32,
+ "lr": 0.0003,
+ "weight_decay": 0.01,
+ "warmup_steps": 150,
+ "optimizer": "AdamW",
+ "scheduler": "warmup+cosine",
+ "clip_grad_norm": 1.0,
+ "n_train_examples": 800,
+ "n_train_rows": 6400,
+ "n_valid_examples": 200,
+ "n_labels": 13,
+ "params": 10509134,
+ "best_val_loss": 0.18561372727155687,
+ "steps": 1600,
+ "history": [
+  {
+   "epoch": 6,
+   "train_loss": 0.2142255513742566,
+   "val_loss": 0.19367055088281632,
+   "seconds": 156.9
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.19097950551658868,
+   "val_loss": 0.18561372727155687,
+   "seconds": 143.1
+  }
+ ]
+}

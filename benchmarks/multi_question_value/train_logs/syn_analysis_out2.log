@@ -1,0 +1,9 @@
+resuming: 21 cells already done
+eval states: 200
+seed 3: plain=runs/mqv-plain-synthetic-s3 vss=runs/mqv-vss-synthetic-s{seed} (cold 2.3s / 3.5s)
+seed 3 Q=1: already done (A_equals_B=True)
+interference_Q32_s3 mean delta pts: 0.0
+interference_Q50_s3 mean delta pts: 0.0
+permutation_Q8_s3 agreement: 0.7875
+permutation_Q32_s3 agreement: 0.7483
+wrote benchmarks\multi_question_value\results\synthetic_results.json

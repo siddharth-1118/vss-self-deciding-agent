@@ -1,0 +1,14 @@
+eval states: 150
+seed 13: plain=runs/mqv-plain-clinc150-s13 vss=runs/clinc150-slot-ho-qmask (cold 2.1s / 3.7s)
+seed 13 Q=1: A 0.6800 B 0.6800 C 0.4467 | p50ms A 17.49 B 18.45 C 18.61
+seed 13 Q=2: A 0.6867 B 0.6867 C 0.4167 | p50ms A 24.03 B 16.86 C 24.58
+seed 13 Q=4: A 0.6717 B 0.6717 C 0.4050 | p50ms A 18.85 B 18.26 C 21.34
+seed 13 Q=8: A 0.6633 B 0.6633 C 0.3975 | p50ms A 25.58 B 24.48 C 34.51
+seed 13 Q=16: A 0.6571 B 0.6571 C 0.3987 | p50ms A 29.14 B 26.82 C 28.47
+seed 13 Q=32: A 0.6596 B 0.6596 C 0.3960 | p50ms A 22.72 B 20.68 C 22.69
+seed 13 Q=50: A 0.6591 B 0.6591 C 0.3973 | p50ms A 17.14 B 17.21 C 20.96
+interference_Q8_s13 mean delta pts: -2.0
+interference_Q32_s13 mean delta pts: -1.33
+permutation_Q8_s13 agreement: 0.9733
+permutation_Q32_s13 agreement: 0.9754
+wrote benchmarks\multi_question_value\results\clinc150_results.json

@@ -1,0 +1,35 @@
+{
+ "system": "plain",
+ "dataset": "banking77",
+ "seed": 13,
+ "epochs": 8,
+ "batch_size": 32,
+ "lr": 0.0003,
+ "weight_decay": 0.01,
+ "warmup_steps": 150,
+ "optimizer": "AdamW",
+ "scheduler": "warmup+cosine",
+ "clip_grad_norm": 1.0,
+ "n_train_examples": 9079,
+ "n_train_rows": 9079,
+ "n_valid_examples": 200,
+ "n_labels": 77,
+ "params": 10525582,
+ "best_val_loss": 0.5205669891834259,
+ "steps": 2272,
+ "history": [
+  {
+   "epoch": 6,
+   "train_loss": 0.0339,
+   "val_loss": 0.5206,
+   "seconds": 395.3
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.0206,
+   "val_loss": 0.5278,
+   "seconds": 485.8
+  }
+ ],
+ "history_note": "Epochs 0-5 stdout was lost across killed shell chunks (their weights carried through last.pt/best.pt; per-epoch val for the selected epoch is recorded). The pre-fix masked-CE epoch-7 entry (val 0.6963) was removed from this log as it belonged to the quarantined broken protocol. best.pt = epoch 6, val 0.5206."
+}

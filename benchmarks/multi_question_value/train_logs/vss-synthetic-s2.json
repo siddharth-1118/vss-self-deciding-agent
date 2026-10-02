@@ -1,0 +1,28 @@
+{
+ "system": "vss",
+ "dataset": "synthetic",
+ "seed": 2,
+ "epochs": 8,
+ "batch_size": 32,
+ "lr": 0.0003,
+ "weight_decay": 0.01,
+ "warmup_steps": 150,
+ "optimizer": "AdamW",
+ "scheduler": "cosine",
+ "clip_grad_norm": 1.0,
+ "question_masked": true,
+ "header_only_choice": true,
+ "n_train_examples": 800,
+ "n_valid_examples": 100,
+ "params": 11164483,
+ "best_val_loss": 2.4774465489387514,
+ "steps": 200,
+ "history": [
+  {
+   "epoch": 7,
+   "train_loss": 2.6027723503112794,
+   "eval_loss": 2.4774465489387514,
+   "seconds": 59.6
+  }
+ ]
+}

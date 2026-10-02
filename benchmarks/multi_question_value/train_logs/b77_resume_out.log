@@ -1,0 +1,17 @@
+train 9079 valid 200 labels 77
+resumed at epoch 6 batch 0 step 1704
+E:\projects\vss\benchmarks\multi_question_value\plain_classifier.py:333: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+  epoch 6 batch 100/284 loss 0.0125
+  epoch 6 batch 200/284 loss 0.0369
+epoch 6: train 0.0339 val 0.5206 (395.3s)
+train 9079 valid 200 labels 77
+resumed at epoch 7 batch 0 step 1988
+E:\projects\vss\benchmarks\multi_question_value\plain_classifier.py:333: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  ep_loss += float(loss)
+  epoch 7 batch 100/284 loss 0.0092
+  epoch 7 batch 200/284 loss 0.0077
+epoch 7: train 0.0206 val 0.5278 (485.8s)
+wrote E:\projects\vss\benchmarks\multi_question_value\train_logs\plain-banking77-s13.json

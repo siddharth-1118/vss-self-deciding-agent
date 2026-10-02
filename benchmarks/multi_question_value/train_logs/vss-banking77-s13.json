@@ -1,0 +1,63 @@
+{
+ "system": "vss",
+ "dataset": "banking77",
+ "seed": 13,
+ "epochs": 8,
+ "batch_size": 32,
+ "lr": 0.0003,
+ "weight_decay": 0.01,
+ "warmup_steps": 150,
+ "optimizer": "AdamW",
+ "scheduler": "cosine",
+ "clip_grad_norm": 1.0,
+ "question_masked": true,
+ "header_only_choice": true,
+ "n_train_examples": 9079,
+ "n_valid_examples": 100,
+ "params": 11164483,
+ "best_val_loss": 1.3205996769480408,
+ "steps": 2272,
+ "history": [
+  {
+   "epoch": 0,
+   "train_loss": 1.5838,
+   "eval_loss": 2.4313
+  },
+  {
+   "epoch": 1,
+   "train_loss": 0.8793,
+   "eval_loss": 1.4662
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.6089,
+   "eval_loss": 1.6726
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.4555,
+   "eval_loss": 1.3206
+  },
+  {
+   "epoch": 4,
+   "train_loss": 0.2869,
+   "eval_loss": 1.4085
+  },
+  {
+   "epoch": 5,
+   "train_loss": 0.2003,
+   "eval_loss": 1.5675
+  },
+  {
+   "epoch": 6,
+   "train_loss": 0.1461,
+   "eval_loss": 1.7313
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.1317,
+   "eval_loss": 1.7878
+  }
+ ],
+ "history_note": "Per-epoch lines recovered from the chunked-run stdout log; best.pt = epoch 3 (eval 1.3206) by validation-loss selection."
+}

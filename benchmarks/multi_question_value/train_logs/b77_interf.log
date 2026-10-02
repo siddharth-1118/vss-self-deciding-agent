@@ -1,0 +1,7 @@
+resuming: 7 cells already done
+eval states: 150
+seed 13: plain=runs/mqv-plain-banking77-s13 vss=runs/mqv-vss-banking77-s13 (cold 8.0s / 7.6s)
+seed 13 Q=1: already done (A_equals_B=True)
+interference_Q8_s13 mean delta pts: -9.084
+interference_Q32_s13 mean delta pts: -10.468
+wrote benchmarks\multi_question_value\results\banking77_results.json

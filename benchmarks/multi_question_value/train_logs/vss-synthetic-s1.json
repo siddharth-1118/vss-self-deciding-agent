@@ -1,0 +1,46 @@
+{
+ "system": "vss",
+ "dataset": "synthetic",
+ "seed": 1,
+ "epochs": 8,
+ "batch_size": 32,
+ "lr": 0.0003,
+ "weight_decay": 0.01,
+ "warmup_steps": 150,
+ "optimizer": "AdamW",
+ "scheduler": "cosine",
+ "clip_grad_norm": 1.0,
+ "question_masked": true,
+ "header_only_choice": true,
+ "n_train_examples": 800,
+ "n_valid_examples": 100,
+ "params": 11164483,
+ "best_val_loss": 2.2146696174144744,
+ "steps": 200,
+ "history": [
+  {
+   "epoch": 4,
+   "train_loss": 4.218883399963379,
+   "eval_loss": 3.939565889835358,
+   "seconds": 55.0
+  },
+  {
+   "epoch": 5,
+   "train_loss": 3.410675497055054,
+   "eval_loss": 3.0281534469127656,
+   "seconds": 54.7
+  },
+  {
+   "epoch": 6,
+   "train_loss": 2.8517408657073973,
+   "eval_loss": 2.511694608926773,
+   "seconds": 54.3
+  },
+  {
+   "epoch": 7,
+   "train_loss": 2.3935901927948,
+   "eval_loss": 2.2146696174144744,
+   "seconds": 53.8
+  }
+ ]
+}
