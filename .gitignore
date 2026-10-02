@@ -22,3 +22,6 @@ data/raw/
 .coverage
 htmlcov/
 .DS_Store
+
+# generated dataset split caches
+benchmarks/multi_question_value/_tmp_splits/

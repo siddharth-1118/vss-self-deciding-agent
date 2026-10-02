@@ -1,0 +1,9 @@
+resuming: 21 cells already done
+eval states: 200
+seed 1: plain=runs/mqv-plain-synthetic-s1 vss=runs/mqv-vss-synthetic-s{seed} (cold 2.2s / 4.3s)
+seed 1 Q=1: already done (A_equals_B=True)
+seed 2: plain=runs/mqv-plain-synthetic-s2 vss=runs/mqv-vss-synthetic-s{seed} (cold 2.2s / 3.9s)
+seed 2 Q=1: already done (A_equals_B=True)
+seed 3: plain=runs/mqv-plain-synthetic-s3 vss=runs/mqv-vss-synthetic-s{seed} (cold 2.2s / 3.4s)
+seed 3 Q=1: already done (A_equals_B=True)
+wrote benchmarks\multi_question_value\results\synthetic_results.json

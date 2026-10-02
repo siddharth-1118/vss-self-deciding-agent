@@ -1,0 +1,16 @@
+train 800 valid 100
+parameters: 11,164,483
+E:\projects\vss\src\vss\training\losses.py:69: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:821.)
+  pred = 1 if float(row["prob"]) >= 0.5 else 0
+epoch 0: train 5.4963 eval 5.4260
+epoch 1: train 5.1271 eval 5.1045
+epoch 2: train 4.9289 eval 4.9287
+  epoch 3 step 100 loss 4.3051
+epoch 3: train 4.7705 eval 4.7103
+epoch 4: train 4.2577 eval 4.1057
+epoch 5: train 3.4943 eval 3.1099
+epoch 6: train 2.8955 eval 2.4876
+  epoch 7 step 200 loss 2.1811
+epoch 7: train 2.4654 eval 2.2657
+wrote E:\projects\vss\benchmarks\multi_question_value\train_logs\vss-synthetic-s3.json

@@ -1,0 +1,26 @@
+eval states: 150
+seed 13: plain=runs/mqv-plain-banking77-s13 vss=runs/mqv-vss-banking77-s13 (cold 2.4s / 3.5s)
+seed 13 Q=1: A 0.8867 B 0.8867 C 0.7600 | p50ms A 40.83 B 41.09 C 46.06
+seed 13 Q=2: A 0.7967 B 0.7967 C 0.6600 | p50ms A 38.08 B 36.57 C 41.16
+seed 13 Q=4: A 0.8067 B 0.8067 C 0.7100 | p50ms A 39.14 B 42.74 C 49.33
+seed 13 Q=8: A 0.7900 B 0.7900 C 0.7308 | p50ms A 37.66 B 39.89 C 46.01
+seed 13 Q=16: A 0.8254 B 0.8254 C 0.7475 | p50ms A 37.18 B 41.48 C 45.98
+seed 13 Q=32: A 0.8423 B 0.8423 C 0.7523 | p50ms A 39.04 B 15.58 C 41.24
+seed 13 Q=50: A 0.8512 B 0.8512 C 0.7540 | p50ms A 38.81 B 40.14 C 43.79
+interference_Q8_s13 mean delta pts: 0.0
+resuming: 7 cells already done
+eval states: 150
+seed 13: plain=runs/mqv-plain-banking77-s13 vss=runs/mqv-vss-banking77-s13 (cold 0.3s / 0.4s)
+seed 13 Q=1: already done (A_equals_B=True)
+resuming: 7 cells already done
+eval states: 150
+seed 13: plain=runs/mqv-plain-banking77-s13 vss=runs/mqv-vss-banking77-s13 (cold 0.4s / 0.5s)
+seed 13 Q=1: already done (A_equals_B=True)
+resuming: 7 cells already done
+eval states: 150
+seed 13: plain=runs/mqv-plain-banking77-s13 vss=runs/mqv-vss-banking77-s13 (cold 0.5s / 0.5s)
+seed 13 Q=1: already done (A_equals_B=True)
+interference_Q32_s13 mean delta pts: 0.062
+permutation_Q8_s13 agreement: 0.9975
+permutation_Q32_s13 agreement: 0.9992
+wrote benchmarks\multi_question_value\results\banking77_results.json

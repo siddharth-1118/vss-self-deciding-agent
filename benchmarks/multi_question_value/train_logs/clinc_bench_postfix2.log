@@ -1,0 +1,10 @@
+eval states: 150
+seed 13: plain=runs/mqv-plain-clinc150-s13 vss=runs/clinc150-slot-ho-qmask (cold 2.1s / 0.5s)
+seed 13 Q=1: A 0.6800 B 0.6800 C 0.4467 | p50ms A 51.9 B 51.01 C 59.74
+seed 13 Q=2: A 0.6867 B 0.6867 C 0.4367 | p50ms A 60.75 B 70.87 C 74.12
+seed 13 Q=4: A 0.6717 B 0.6717 C 0.4283 | p50ms A 62.53 B 61.38 C 54.69
+seed 13 Q=8: A 0.6633 B 0.6633 C 0.4275 | p50ms A 63.62 B 63.33 C 73.64
+seed 13 Q=16: A 0.6571 B 0.6571 C 0.4192 | p50ms A 57.07 B 53.16 C 63.58
+seed 13 Q=32: A 0.6596 B 0.6596 C 0.4140 | p50ms A 57.43 B 54.78 C 63.39
+seed 13 Q=50: A 0.6591 B 0.6591 C 0.4113 | p50ms A 29.89 B 27.43 C 33.44
+interference_Q8_s13 mean delta pts: -0.125

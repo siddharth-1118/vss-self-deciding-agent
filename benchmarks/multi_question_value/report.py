@@ -176,24 +176,37 @@ def boot_block(res: dict, qs: list[int]) -> str:
     return "\n".join(lines)
 
 
+def _seed_of(key: str) -> str:
+    """'interference_Q8_s1' -> '1'; 'permutation_Q8_s13' -> '13'."""
+    tail = key.rsplit("_s", 1)[-1]
+    return tail if tail.isdigit() else "?"
+
+
 def extras(res: dict) -> str:
     chunks = []
     for key in sorted(res):
         if key.startswith("interference_Q"):
             blk = res[key]
+            flips = sum(d.get("paired_decision_flips", 0)
+                        for d in blk["per_qid"].values())
+            pairs = sum(d.get("solo_n", 0) for d in blk["per_qid"].values())
             rows = ["### Interference (solo vs joint, VSS)",
-                    f"Q={blk['q']}, n_states={blk['n_states']}, "
-                    f"mean delta = {blk['mean_delta_pts']} pts", "",
-                    "| question | solo | joint | delta pts |",
-                    "|----------|-----:|------:|----------:|"]
+                    f"Q={blk['q']}, seed={_seed_of(key)}, "
+                    f"n_states={blk['n_states']}, "
+                    f"mean delta = {blk['mean_delta_pts']} pts, "
+                    f"paired decision flips = {flips}/{pairs}", "",
+                    "| question | solo | joint | delta pts | paired flips |",
+                    "|----------|-----:|------:|----------:|--------------:|"]
             for qid, d in sorted(blk["per_qid"].items()):
                 rows.append(f"| {qid} | {d['solo']:.4f} | {d['joint']:.4f} | "
-                            f"{d['delta_pts']:+.2f} |")
+                            f"{d['delta_pts']:+.2f} | "
+                            f"{d.get('paired_decision_flips', '-')} |")
             chunks.append("\n".join(rows))
         elif key.startswith("permutation_Q"):
             blk = res[key]
             chunks.append(
                 f"### Question order (permutation)\nQ={blk['q']}, "
+                f"seed={_seed_of(key)}, "
                 f"agreement = {blk['agreement']:.4f} over {blk['n_pairs']} pairs")
     return "\n\n".join(chunks)
 

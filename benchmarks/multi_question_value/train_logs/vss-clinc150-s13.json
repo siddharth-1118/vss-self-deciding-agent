@@ -1,6 +1,6 @@
 {
  "system": "vss",
- "dataset": "banking77",
+ "dataset": "clinc150",
  "seed": 13,
  "epochs": 8,
  "batch_size": 32,
@@ -12,51 +12,51 @@
  "clip_grad_norm": 1.0,
  "question_masked": true,
  "header_only_choice": true,
- "n_train_examples": 9079,
+ "n_train_examples": 10625,
  "n_valid_examples": 100,
  "params": 11164483,
- "best_val_loss": 1.0478248261939733,
- "steps": 2272,
+ "best_val_loss": 2.3761788342706858,
+ "steps": 2664,
  "history": [
   {
    "epoch": 0,
-   "train_loss": 2.3272,
-   "eval_loss": 2.0391
+   "train_loss": 2.243,
+   "eval_loss": 3.1073
   },
   {
    "epoch": 1,
-   "train_loss": 0.7306,
-   "eval_loss": 1.3101
+   "train_loss": 0.6096,
+   "eval_loss": 2.5672
   },
   {
    "epoch": 2,
-   "train_loss": 0.4499,
-   "eval_loss": 1.6357
+   "train_loss": 0.2822,
+   "eval_loss": 2.2322
   },
   {
    "epoch": 3,
-   "train_loss": 0.2628,
-   "eval_loss": 1.3099
+   "train_loss": 0.136,
+   "eval_loss": 3.1306
   },
   {
    "epoch": 4,
-   "train_loss": 0.1462,
-   "eval_loss": 1.3816
+   "train_loss": 0.0649,
+   "eval_loss": 3.1183
   },
   {
    "epoch": 5,
-   "train_loss": 0.0813,
-   "eval_loss": 1.1084
+   "train_loss": 0.0318,
+   "eval_loss": 3.5148
   },
   {
    "epoch": 6,
-   "train_loss": 0.0501,
-   "eval_loss": 1.0478
+   "train_loss": 0.0219,
+   "eval_loss": 3.4153
   },
   {
    "epoch": 7,
-   "train_loss": 0.042,
-   "eval_loss": 1.0616
+   "train_loss": 0.016,
+   "eval_loss": 3.5195
   }
  ],
  "history_note": "Per-epoch lines recovered from the chunked-run stdout log; best.pt chosen by validation loss (see best_val_loss)."

@@ -2,17 +2,17 @@
 <rect width="640" height="400" fill="white"/>
 <text x="320.0" y="18" text-anchor="middle">clinc150: median request latency vs Q</text>
 <line x1="48" y1="360.0" x2="624" y2="360.0" stroke="#eee"/>
-<text x="42" y="363.0" text-anchor="end" fill="#555">15.4</text>
-<line x1="48" y1="273.1" x2="624" y2="273.1" stroke="#eee"/>
-<text x="42" y="276.1" text-anchor="end" fill="#555">19.5</text>
-<line x1="48" y1="202.7" x2="624" y2="202.7" stroke="#eee"/>
-<text x="42" y="205.7" text-anchor="end" fill="#555">23.6</text>
-<line x1="48" y1="143.7" x2="624" y2="143.7" stroke="#eee"/>
-<text x="42" y="146.7" text-anchor="end" fill="#555">27.7</text>
-<line x1="48" y1="92.7" x2="624" y2="92.7" stroke="#eee"/>
-<text x="42" y="95.7" text-anchor="end" fill="#555">31.8</text>
+<text x="42" y="363.0" text-anchor="end" fill="#555">23.7</text>
+<line x1="48" y1="261.3" x2="624" y2="261.3" stroke="#eee"/>
+<text x="42" y="264.3" text-anchor="end" fill="#555">34.5</text>
+<line x1="48" y1="189.7" x2="624" y2="189.7" stroke="#eee"/>
+<text x="42" y="192.7" text-anchor="end" fill="#555">45.4</text>
+<line x1="48" y1="133.5" x2="624" y2="133.5" stroke="#eee"/>
+<text x="42" y="136.5" text-anchor="end" fill="#555">56.2</text>
+<line x1="48" y1="87.3" x2="624" y2="87.3" stroke="#eee"/>
+<text x="42" y="90.3" text-anchor="end" fill="#555">67</text>
 <line x1="48" y1="48.0" x2="624" y2="48.0" stroke="#eee"/>
-<text x="42" y="51.0" text-anchor="end" fill="#555">35.9</text>
+<text x="42" y="51.0" text-anchor="end" fill="#555">77.9</text>
 <line x1="48.0" y1="360" x2="48.0" y2="364" stroke="#888"/>
 <text x="48.0" y="376" text-anchor="middle" fill="#555">1</text>
 <line x1="59.8" y1="360" x2="59.8" y2="364" stroke="#888"/>
@@ -31,34 +31,34 @@
 <line x1="48" y1="360" x2="48" y2="48" stroke="#333"/>
 <text x="320.0" y="396" text-anchor="middle" fill="#333">questions per request</text>
 <text x="12" y="200.0" text-anchor="middle" fill="#333" transform="rotate(-90 12 200.0)">ms (log scale)</text>
-<polyline points="48.0,314.1 59.8,196.6 83.3,286.4 130.3,173.5 224.3,125.4 412.4,217.4 624.0,321.6" fill="none" stroke="#d62728" stroke-width="2"/>
-<circle cx="48.0" cy="314.1" r="3" fill="#d62728"/>
-<circle cx="59.8" cy="196.6" r="3" fill="#d62728"/>
-<circle cx="83.3" cy="286.4" r="3" fill="#d62728"/>
-<circle cx="130.3" cy="173.5" r="3" fill="#d62728"/>
-<circle cx="224.3" cy="125.4" r="3" fill="#d62728"/>
-<circle cx="412.4" cy="217.4" r="3" fill="#d62728"/>
-<circle cx="624.0" cy="321.6" r="3" fill="#d62728"/>
+<polyline points="48.0,154.4 59.8,113.1 83.3,105.5 130.3,101.0 224.3,129.5 412.4,127.8 624.0,299.1" fill="none" stroke="#d62728" stroke-width="2"/>
+<circle cx="48.0" cy="154.4" r="3" fill="#d62728"/>
+<circle cx="59.8" cy="113.1" r="3" fill="#d62728"/>
+<circle cx="83.3" cy="105.5" r="3" fill="#d62728"/>
+<circle cx="130.3" cy="101.0" r="3" fill="#d62728"/>
+<circle cx="224.3" cy="129.5" r="3" fill="#d62728"/>
+<circle cx="412.4" cy="127.8" r="3" fill="#d62728"/>
+<circle cx="624.0" cy="299.1" r="3" fill="#d62728"/>
 <rect x="434" y="54" width="14" height="3" fill="#d62728"/>
 <text x="454" y="59">A sequential classifier</text>
-<polyline points="48.0,294.3 59.8,327.7 83.3,298.2 130.3,189.8 224.3,156.0 412.4,252.2 624.0,320.1" fill="none" stroke="#ff7f0e" stroke-width="2"/>
-<circle cx="48.0" cy="294.3" r="3" fill="#ff7f0e"/>
-<circle cx="59.8" cy="327.7" r="3" fill="#ff7f0e"/>
-<circle cx="83.3" cy="298.2" r="3" fill="#ff7f0e"/>
-<circle cx="130.3" cy="189.8" r="3" fill="#ff7f0e"/>
-<circle cx="224.3" cy="156.0" r="3" fill="#ff7f0e"/>
-<circle cx="412.4" cy="252.2" r="3" fill="#ff7f0e"/>
-<circle cx="624.0" cy="320.1" r="3" fill="#ff7f0e"/>
+<polyline points="48.0,158.9 59.8,72.7 83.3,110.4 130.3,102.2 224.3,148.1 412.4,140.2 624.0,321.6" fill="none" stroke="#ff7f0e" stroke-width="2"/>
+<circle cx="48.0" cy="158.9" r="3" fill="#ff7f0e"/>
+<circle cx="59.8" cy="72.7" r="3" fill="#ff7f0e"/>
+<circle cx="83.3" cy="110.4" r="3" fill="#ff7f0e"/>
+<circle cx="130.3" cy="102.2" r="3" fill="#ff7f0e"/>
+<circle cx="224.3" cy="148.1" r="3" fill="#ff7f0e"/>
+<circle cx="412.4" cy="140.2" r="3" fill="#ff7f0e"/>
+<circle cx="624.0" cy="321.6" r="3" fill="#ff7f0e"/>
 <rect x="434" y="70" width="14" height="3" fill="#ff7f0e"/>
 <text x="454" y="75">B batched classifier</text>
-<polyline points="48.0,291.1 59.8,188.3 83.3,240.5 130.3,62.8 224.3,134.0 412.4,217.9 624.0,247.2" fill="none" stroke="#1f77b4" stroke-width="2"/>
-<circle cx="48.0" cy="291.1" r="3" fill="#1f77b4"/>
-<circle cx="59.8" cy="188.3" r="3" fill="#1f77b4"/>
-<circle cx="83.3" cy="240.5" r="3" fill="#1f77b4"/>
-<circle cx="130.3" cy="62.8" r="3" fill="#1f77b4"/>
-<circle cx="224.3" cy="134.0" r="3" fill="#1f77b4"/>
-<circle cx="412.4" cy="217.9" r="3" fill="#1f77b4"/>
-<circle cx="624.0" cy="247.2" r="3" fill="#1f77b4"/>
+<polyline points="48.0,117.5 59.8,60.9 83.3,140.6 130.3,62.6 224.3,101.1 412.4,101.9 624.0,269.6" fill="none" stroke="#1f77b4" stroke-width="2"/>
+<circle cx="48.0" cy="117.5" r="3" fill="#1f77b4"/>
+<circle cx="59.8" cy="60.9" r="3" fill="#1f77b4"/>
+<circle cx="83.3" cy="140.6" r="3" fill="#1f77b4"/>
+<circle cx="130.3" cy="62.6" r="3" fill="#1f77b4"/>
+<circle cx="224.3" cy="101.1" r="3" fill="#1f77b4"/>
+<circle cx="412.4" cy="101.9" r="3" fill="#1f77b4"/>
+<circle cx="624.0" cy="269.6" r="3" fill="#1f77b4"/>
 <rect x="434" y="86" width="14" height="3" fill="#1f77b4"/>
 <text x="454" y="91">C VSS single-pass</text>
 </svg>

@@ -1,0 +1,61 @@
+eval states: 200
+seed 1: plain=runs/mqv-plain-synthetic-s1 vss=runs/mqv-vss-synthetic-s{seed} (cold 0.2s / 0.3s)
+seed 1 Q=1: A 0.9600 B 0.9600 C 0.9100 | p50ms A 23.39 B 23.53 C 24.25
+seed 1 Q=2: A 0.9800 B 0.9800 C 0.9550 | p50ms A 33.4 B 25.95 C 19.64
+seed 1 Q=4: A 0.9613 B 0.9613 C 0.9563 | p50ms A 72.99 B 33.3 C 21.31
+seed 1 Q=8: A 0.9319 B 0.9319 C 0.7438 | p50ms A 132.7 B 53.92 C 23.77
+seed 1 Q=16: A 0.9503 B 0.9503 C 0.7666 | p50ms A 266.84 B 99.69 C 43.65
+seed 1 Q=32: A 0.8053 B 0.8053 C 0.6587 | p50ms A 502.71 B 187.51 C 69.83
+seed 1 Q=50: A 0.7569 B 0.7569 C 0.6214 | p50ms A 783.78 B 283.2 C 114.12
+interference_Q8_s1 mean delta pts: 0.875
+interference_Q32_s1 mean delta pts: 0.312
+interference_Q50_s1 mean delta pts: 0.28
+permutation_Q8_s1 agreement: 0.9644
+resuming: 7 cells already done
+eval states: 200
+seed 2: plain=runs/mqv-plain-synthetic-s2 vss=runs/mqv-vss-synthetic-s{seed} (cold 2.2s / 4.7s)
+seed 2 Q=1: A 0.9750 B 0.9750 C 0.6900 | p50ms A 18.72 B 18.24 C 16.79
+seed 2 Q=2: A 0.9875 B 0.9875 C 0.8450 | p50ms A 35.68 B 23.04 C 17.97
+seed 2 Q=4: A 0.9563 B 0.9563 C 0.9012 | p50ms A 65.43 B 35.12 C 22.53
+seed 2 Q=8: A 0.9213 B 0.9213 C 0.7087 | p50ms A 138.7 B 57.73 C 31.22
+seed 2 Q=16: A 0.9119 B 0.9119 C 0.7431 | p50ms A 267.6 B 100.72 C 45.54
+seed 2 Q=32: A 0.7847 B 0.7847 C 0.6383 | p50ms A 516.37 B 189.03 C 71.08
+seed 2 Q=50: A 0.7442 B 0.7442 C 0.5995 | p50ms A 714.96 B 249.13 C 100.06
+interference_Q8_s2 mean delta pts: -0.25
+interference_Q32_s2 mean delta pts: 0.703
+interference_Q50_s2 mean delta pts: 0.63
+permutation_Q8_s2 agreement: 0.9669
+resuming: 14 cells already done
+eval states: 200
+seed 3: plain=runs/mqv-plain-synthetic-s3 vss=runs/mqv-vss-synthetic-s{seed} (cold 3.9s / 23.3s)
+seed 3 Q=1: A 0.9750 B 0.9750 C 0.6850 | p50ms A 14.77 B 14.57 C 14.89
+seed 3 Q=2: A 0.9875 B 0.9875 C 0.8425 | p50ms A 28.12 B 19.13 C 16.14
+seed 3 Q=4: A 0.9725 B 0.9725 C 0.8975 | p50ms A 55.18 B 28.74 C 18.89
+seed 3 Q=8: A 0.9319 B 0.9319 C 0.7144 | p50ms A 110.24 B 46.49 C 25.26
+seed 3 Q=16: A 0.9397 B 0.9397 C 0.7291 | p50ms A 227.43 B 85.81 C 41.07
+seed 3 Q=32: A 0.8173 B 0.8173 C 0.6169 | p50ms A 440.67 B 136.06 C 50.19
+seed 3 Q=50: A 0.7777 B 0.7777 C 0.5766 | p50ms A 736.77 B 271.32 C 113.36
+interference_Q8_s3 mean delta pts: -0.312
+interference_Q32_s3 mean delta pts: 0.406
+interference_Q50_s3 mean delta pts: 0.06
+resuming: 21 cells already done
+eval states: 200
+seed 2: plain=runs/mqv-plain-synthetic-s2 vss=runs/mqv-vss-synthetic-s{seed} (cold 3.5s / 6.9s)
+seed 2 Q=1: already done (A_equals_B=True)
+permutation_Q32_s2 agreement: 0.9931
+seed 3: plain=runs/mqv-plain-synthetic-s3 vss=runs/mqv-vss-synthetic-s{seed} (cold 3.9s / 22.7s)
+seed 3 Q=1: already done (A_equals_B=True)
+permutation_Q8_s3 agreement: 0.9656
+permutation_Q32_s3 agreement: 0.9912
+wrote benchmarks\multi_question_value\results\synthetic_results.json
+resuming: 21 cells already done
+eval states: 200
+seed 3: plain=runs/mqv-plain-synthetic-s3 vss=runs/mqv-vss-synthetic-s{seed} (cold 3.2s / 5.2s)
+seed 3 Q=1: already done (A_equals_B=True)
+wrote benchmarks\multi_question_value\results\synthetic_results.json
+resuming: 21 cells already done
+eval states: 200
+seed 1: plain=runs/mqv-plain-synthetic-s1 vss=runs/mqv-vss-synthetic-s{seed} (cold 4.9s / 6.3s)
+seed 1 Q=1: already done (A_equals_B=True)
+permutation_Q32_s1 agreement: 0.9914
+wrote benchmarks\multi_question_value\results\synthetic_results.json

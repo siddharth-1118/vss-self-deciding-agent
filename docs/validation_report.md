@@ -294,8 +294,13 @@ real 151-/77-label intent tasks). 35 cells; every question scored
 individually; ECE/Brier/NLL per question; p50/p95/p99 latency; paired
 bootstrap C−B; solo-vs-joint interference per template; order permutation.
 Artifacts: `benchmarks/multi_question_value/` (harness, results JSON,
-`report.md`, 15 SVG plots), `docs/multi_question_value_report.md` (21
-sections), `docs/claims.md` D13–D18. Test suite: 63 passing.
+`report.md`, `results/DIGEST.txt`, 15 SVG plots),
+`docs/multi_question_value_report.md` (21 sections), `docs/claims.md` D13–D18.
+Test suite: 63 passing at this pass, 65 after the §17.5 fixes.
+
+> §17.1–§17.4 record the **first** pass. §17.5 is the current result: two of
+> the findings below (order-invariance, real-data interference) were bugs and
+> are withdrawn.
 
 ## 17.2 Result
 
@@ -357,3 +362,71 @@ the typed per-question heads, and the confidence-gated abstention (+17.5 pts
 selective accuracy on CLINC150). To be fixed first: order-invariance and the
 abstention calibration that costs 15–17 pts of real-data accuracy. VSS is
 **not** ready to scale to 52M+ parameters.
+
+> **SUPERSEDED IN PART — read §17.5 first.** The two defects named for fixing
+> above (order-invariance, and the "15–17 pt abstention cost") turned out to be
+> bugs, not architecture. They are fixed and the whole test was re-measured;
+> §17.5 is the current result. The accuracy verdict (plain wins 35/35 cells)
+> survived the fix.
+
+## 17.5 Second pass — the two "defects" were bugs, and the verdict survived
+
+Acting on §17.4's "fix the defects first" item found **two implementation
+bugs**, not architectural properties. Both are fixed, regression-tested, and the
+entire 35-cell value test was re-measured on corrected code with retrained VSS
+checkpoints. Pre-fix results are preserved verbatim in
+`benchmarks/multi_question_value/results/*_results_prefix.json`.
+
+**Bug 1 — the question mask was built per batch, not per example**
+(`src/vss/model/encoder.py`, fixed in `df5eb50`). The encoder allocated a single
+`[T,T]` plane and wrote every example's rows into it inside the batch loop, so
+example *b*'s span geometry overwrote example *b−1*'s — the last example in the
+batch decided the isolation mask for all of them. Isolation depended on batch
+composition and question order, and was invisible at batch size 1, which is why
+every earlier single-question probe missed it. Fix: per-example
+`m = torch.zeros(len(spans), T, T)`, writes `m[b, …]`, `qmask = m.unsqueeze(1)`
+→ `[B,1,T,T]`. Two regression tests pin it in `tests/test_question_mask.py`
+(per-example planes in a heterogeneous batch; batch-invariance of per-question
+outputs, atol 2e-3 for fp32 padding noise). Test suite 63 → 65.
+
+**Bug 2 — the interference probe compared different state sets.** The solo arm
+was capped at 100 states while the joint arm scored 200, so it reported large
+deltas with **zero** paired decisions actually flipping. Both arms now score the
+same `(state, question)` pairs, the joint arm is computed once over the union of
+selected states, and every per-question entry carries
+`paired_decision_flips`.
+
+**Measured effect (before → after):**
+
+| Measurement | Pre-fix | Post-fix |
+|---|---:|---:|
+| Order agreement, synthetic Q=8 (3 seeds) | 0.776 / 0.794 / 0.788 | 0.964 / 0.967 / 0.966 |
+| Order agreement, synthetic Q=32 (3 seeds) | 0.740 / 0.752 / 0.748 | 0.991 / 0.993 / 0.991 |
+| Order agreement, CLINC150 Q=8 / Q=32 (same ckpt, code only) | 0.973 / 0.975 | 0.996 / 0.998 |
+| Interference, CLINC150 Q=8 / Q=32 (same ckpt, code only) | −16.9 / −15.6 pts | **−0.13 / −0.31 pts** |
+| Interference, Banking77 Q=8 / Q=32 | −9.1 / −10.5 pts | **0.00 / +0.06 pts** |
+| Paired decision flips, synthetic (27,000 pairs) | not measured | **0** |
+| VSS accuracy, Banking77 Q=1 / Q=50 (retrained) | 0.573 / 0.429 | **0.760 / 0.754** |
+| VSS answered-accuracy, CLINC150 Q=1 | 0.761 @ 58.7% | 0.736 @ 60.7% (plain 0.680) |
+
+**One of my own claims was simply wrong and is retracted.** §17.2/§17.4 blamed
+abstention for "15–17 points" of real-data accuracy. Sweeping the threshold
+(`benchmarks/multi_question_value/results/abstention_sweep.json`) shows
+*decision* accuracy (abstentions scored wrong) is **flat at 0.533 on CLINC150**
+across thresholds 0.0–0.55 (coverage 100% → 68%) and 0.687 on Banking77 across
+0.0–0.5. The gate costs nothing; the loss was a symptom of the mask bug.
+
+**What did not change: the accuracy verdict.** Plain still beats VSS in 35/35
+cells with paired-bootstrap CIs excluding zero, now on defect-free code with
+retrained checkpoints (synthetic Q=1 [−0.265,−0.157] … Q=50 [−0.170,−0.151];
+CLINC150 Q=50 [−0.258,−0.238]; Banking77 Q=50 [−0.107,−0.088]). Retraining on
+the fixed mask also *helped* VSS substantially on Banking77 (0.573 → 0.760 at
+Q=1) and still left it behind plain, which is the strongest form of the
+finding: the gap is not a bug artifact.
+
+**Revised decision.** Still **do not scale**, but the remaining reason is
+narrower: the accuracy gap is confounded by VSS's unconverged training budget
+(synthetic validation loss still descending at the 8-epoch cap), so "plain wins"
+is a statement about *this budget*, not the architecture. The next experiment is
+therefore §16/§21 item 2 — a converged, multi-seed budget — plus a genuinely
+multi-question real task, not another bug hunt.

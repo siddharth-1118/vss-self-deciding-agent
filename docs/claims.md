@@ -129,12 +129,15 @@ sensitive component. Not directly measured (no ablation of pooling).
 ## Unknown
 
 ### U2. RESOLVED — VSS does NOT beat the plain-head baseline on multi-question tasks
-Question-masked attention fixes interference exactly (D3 resolution) at −2.3
-pts solo accuracy. **The multi-question value test answered this: the plain
-classifier wins.** See "Multi-question value test" below (D13–D18) and
+Question-masked attention is meant to fix interference exactly (D3 resolution)
+at −2.3 pts solo accuracy. **The multi-question value test answered this: the
+plain classifier wins** — and it still wins after the per-batch mask bug was
+found, fixed, and every VSS checkpoint retrained (D13). See the
+"Multi-question value test" section below (D13–D20) and
 `docs/multi_question_value_report.md`. The single-pass co-asking machinery did
 not beat a plain classifier on per-question accuracy at any Q, on any of the
-three datasets; the architecture is not justified as it stands.
+three datasets; the architecture is not justified as it stands **at this
+budget**, which is the confound that must be closed next.
 
 ### U3. Multi-seed behavior of CLINC150 results
 All CLINC150 numbers are seed 13 only. Banking77 variance was 0.72 pts, but
@@ -155,8 +158,23 @@ slot count.
 ## Multi-question value test (35 cells, 3 datasets, 3 systems)
 
 Evidence: `benchmarks/multi_question_value/results/*.json`,
+`benchmarks/multi_question_value/results/DIGEST.txt`,
 `benchmarks/multi_question_value/report.md`,
 `docs/multi_question_value_report.md`.
+
+**Second pass, post-defect-fix.** Two first-pass "defects" turned out to be
+implementation bugs: (1) `src/vss/model/encoder.py` built the question-isolation
+mask once per *batch* instead of once per example, so in a batch of N examples
+only the last example's span geometry survived (fixed in `df5eb50`, 2
+regression tests in `tests/test_question_mask.py`); (2) the harness's
+interference probe compared a 100-state solo arm against a 200-state joint arm
+and reported large deltas while zero paired decisions flipped (now both arms
+score the same `(state, question)` pairs and report `paired_decision_flips`).
+All four VSS checkpoints were retrained on the fixed mask and all 35 cells were
+re-measured. D13 and D14 survive the fix; **D15, D16 and D17 are rewritten and
+the first-pass versions are withdrawn.** Pre-fix numbers are preserved verbatim
+in `results/*_results_prefix.json`; the before/after table is §16.1 of the
+report.
 
 ### D13. Plain classifier beats VSS on per-question accuracy — DEMONSTRATED
 At matched training budget (same tokenizer family, same header-only
@@ -166,44 +184,86 @@ classifier (systems A/B) beats VSS (system C) on per-question accuracy in
 **all 35 measured (dataset, Q) cells** — synthetic Q∈{1,2,4,8,16,32,50} over
 3 seeds, CLINC150 and Banking77 at Q∈{1,…,50}. Paired bootstrap (1000
 resamples) of C−B is negative everywhere with CIs excluding zero (synthetic
-Q=1 [−0.380,−0.252] → Q=50 [−0.200,−0.180]; CLINC150 Q=50 [−0.272,−0.252];
-Banking77 Q=50 [−0.435,−0.410]). VSS request accuracy reaches 0.000 from Q=8
+Q=1 [−0.265,−0.157] → Q=50 [−0.170,−0.151]; CLINC150 Q=50 [−0.258,−0.238];
+Banking77 Q=50 [−0.107,−0.088]). VSS request accuracy reaches 0.000 from Q=16
 on synthetic (all-questions-right requirement); plain decays gracefully.
+**Re-measured after the mask fix with retrained VSS checkpoints, so this is not
+a bug artifact** — it is a statement about this budget, not about the
+architecture (see U2 and the report's §20).
 
 ### D14. VSS single-pass latency beats even the BATCHED classifier at high Q — DEMONSTRATED (conditional)
-Synthetic p50 request latency at Q=50: A sequential 778.6 ms, B batched
-304.4 ms, C VSS 110.8 ms → **7.0× vs sequential, 2.8× vs batched**
-(throughput 458 vs 166 questions/s). At Q=1 all three are within 6% of each
+Synthetic p50 request latency at Q=50: A sequential 745.2 ms, B batched
+267.9 ms, C VSS 109.2 ms → **6.8× vs sequential, 2.5× vs batched**
+(throughput 460 vs 187 questions/s). At Q=1 all three are within 2% of each
 other. The advantage is a function of request length, not question count: on
-CLINC150 and Banking77 (one short question per state) VSS is 1.1–1.3× *slower*
-per request and 0.82–0.85× the batched classifier's questions/s.
+CLINC150 and Banking77 (one short question per state) VSS is 1.1× *slower*
+per request and 0.82–0.92× the batched classifier's questions/s. Absolute
+latencies are load-dependent (the post-fix re-run measured 2–3× slower absolute
+values than the pre-fix run); only within-cell ratios are claimed.
 
-### D15. VSS shows no cross-question interference on synthetic, but does on real data — DEMONSTRATED
-Solo-vs-joint per-template deltas (all templates, 3 seeds × Q∈{8,32,50}) on
-synthetic: **−0.13 to +2.7 pts** (no systematic interference). On real data
-(co-asked replicas of one canonical question): **−16.9/−15.6 pts (CLINC150)**
-and **−9.1/−10.5 pts (Banking77)** at Q=8/32. The real-data loss decomposes
-into a coverage drop (CLINC150 Q=8: 66.3% → 51.5%) plus an answered-accuracy
-drop (85.5% → 77.2%, i.e. −8.3 pts on answered questions).
+### D15. VSS has no measurable cross-question interference on any dataset — DEMONSTRATED (rewritten post-fix)
+Both arms of the probe now score the **same** `(state, question)` pairs, so the
+assumption-free statistic is `paired_decision_flips`. On synthetic (3 seeds ×
+Q∈{8,32,50}, 27,000 paired decisions) the mean solo→joint delta is
+**−0.31 to +0.88 pts with exactly 0 paired decision flips**. On real data
+(replicated single-question requests) the deltas are **−0.13/−0.31 pts
+(CLINC150 Q=8/32)** and **0.00/+0.06 pts (Banking77 Q=8/32)**, with 1.2–3.5% of
+paired decisions flipping in both directions — consistent with fp32
+non-associativity under different padding, not with systematic leakage.
+**The first-pass claim of −16.9/−15.6 pts (CLINC150) and −9.1/−10.5 pts
+(Banking77) real-data interference is withdrawn**: it compared a 100-state solo
+arm against a 200-state joint arm and had 0 paired flips behind the headline
+number.
 
-### D16. VSS's confidence gate selects a much more accurate subset on CLINC150 — DEMONSTRATED
-With the shipped threshold (0.55, blend confidence), VSS's answered questions
-are **85.5% accurate at 66.3% coverage** where the plain classifier is 68.0%
-accurate while always answering — a 17.5-pt selective-accuracy advantage. The
-advantage does not transfer to Banking77 (VSS 78.9% answered vs plain 88.7%).
+### D16. VSS's confidence gate selects a more accurate subset — DEMONSTRATED (rewritten post-fix)
+With the shipped threshold (0.55, blend confidence) on CLINC150, VSS's answered
+questions are **77.7% accurate at 53.0% coverage** where the plain classifier is
+65.9% accurate while always answering (Q=50) — an 11.8-pt selective-accuracy
+advantage. The advantage does not transfer to Banking77 at Q=1 (0.857 answered
+vs 0.887 plain) but appears at Q=50 (0.867 vs 0.851).
+**The gate costs nothing in overall accuracy**: sweeping the threshold
+(`results/abstention_sweep.json`), decision accuracy is flat at 0.533
+(CLINC150) and 0.687 (Banking77) across thresholds 0.0–0.55. The first pass's
+"abstention costs 15–17 accuracy points" claim is **retracted** — it was a
+symptom of the mask bug, not a property of the gate. The first pass's 17.5-pt
+selective-accuracy figure is also superseded (it was 85.5% answered @ 66.3%
+coverage on a buggy-mask checkpoint).
 
-### D17. VSS answers are only ~74–79% order-invariant — DEMONSTRATED (new finding)
-Permuting distinct synthetic questions within one request changes the answer
-for ~21–26% of (state, question) pairs (Q=8: 0.776/0.794/0.788; Q=32:
-0.740/0.752/0.748 across seeds). The plain classifier is exactly
-order-invariant by construction. This defect was not visible in the earlier
-dose-response experiments and explains part of VSS's request-accuracy collapse.
+### D17. ~~VSS answers are only ~74–79% order-invariant~~ — WITHDRAWN, superseded by D20
+The first pass measured 74–79% agreement under question permutation on distinct
+synthetic questions. That was an artifact of the per-batch question mask
+(below). **Withdrawn as a property of the architecture.** The current
+measurement is in D20.
 
 ### D18. Batching does not change plain-classifier outputs — DEMONSTRATED
 Mode A ≡ mode B verified in all 35 cells (`A_equals_B: true`; 16-pair batch-1
-vs batch-32 spot check per cell, max probability difference ≤ 1e-6, pure fp32
+vs batch-32 spot check per cell, max probability difference ≤ 1.5e-6, pure fp32
 noise). This is why the batched classifier (B) is the honest latency
 baseline rather than the slow sequential one (A).
+
+### D19. The question-isolation mask was built per batch, not per example — DEMONSTRATED (new, code defect + fix)
+`src/vss/model/encoder.py` allocated a single `[T,T]` plane and wrote every
+example's rows into it inside the batch loop, so example *b*'s span geometry
+overwrote example *b−1*'s and the **last example in the batch decided the mask
+for the whole batch**. Isolation therefore depended on batch composition and
+question order, and was invisible at batch size 1 (which is why single-question
+probes never showed it). Fixed in `df5eb50` to a per-example `[B,1,T,T]` mask,
+pinned by two regression tests in `tests/test_question_mask.py` (per-example
+planes in a heterogeneous batch; batch-invariance of per-question outputs).
+Effect on measured claims, same-checkpoint where possible: order agreement
+0.973/0.975 → 0.996/0.998 (CLINC150 Q=8/32), real-data interference
+−16.9/−15.6 → −0.13/−0.31 pts. Retraining the Banking77 checkpoint on the
+fixed mask moved per-question accuracy 0.573 → 0.760 (Q=1) and 0.429 → 0.754
+(Q=50).
+
+### D20. VSS answers are 96.4–99.3% order-invariant on distinct synthetic questions — DEMONSTRATED (post-fix replacement for D17)
+After the D19 fix and retraining, permuting distinct synthetic questions within
+one request changes the answer for 0.7–3.6% of (state, question) pairs
+(Q=8: 0.964/0.967/0.966; Q=32: 0.991/0.993/0.991 across seeds; CLINC150
+0.996/0.998, Banking77 0.998/0.999 on replicated requests). The plain
+classifier is exactly order-invariant by construction. The residual
+disagreement carries no consistent direction (see D15), which is consistent
+with fp32 non-associativity rather than a slot-position effect.
 
 ---
 
@@ -216,13 +276,16 @@ baseline rather than the slow sequential one (A).
 - "One forward pass answers N questions" is true at N=1 and false as an
   accuracy-preserving claim at large N (D3, D10).
 - **VSS is NOT validated as an architecture.** The multi-question value test
-  found the plain classifier ahead on accuracy in 35/35 cells (D13). The
-  specialized architecture is not justified over a plain classifier called once
-  per question at this budget; only the single-pass latency mechanism (D14),
-  the zero synthetic interference (D15) and the selective-accuracy gate (D16)
-  survive the experiment as genuine, narrower benefits.
-- **VSS is NOT ready to scale to 52M+ parameters.** Its synthetic validation
-  loss was still descending at the 8-epoch cap while plain had plateaued, so
-  the accuracy gap is confounded by an unconverged VSS budget; and its
-  measured order-invariance defect (D17) and real-data interference (D15) are
-  architectural, not budget, problems.
+  found the plain classifier ahead on accuracy in 35/35 cells (D13) — measured
+  on defect-free code with retrained checkpoints. The specialized architecture
+  is not justified over a plain classifier called once per question at this
+  budget; only the single-pass latency mechanism (D14), the verified absence of
+  interference (D15) and the selective-accuracy gate (D16) survive as genuine,
+  narrower benefits.
+- **VSS is NOT ready to scale to 52M+ parameters, but not for the reason first
+  stated.** The order-sensitivity (D17) and real-data interference (D15)
+  objections were implementation bugs and are withdrawn. What remains is the
+  accuracy gap (D13) *confounded by an unconverged VSS training budget* — its
+  synthetic validation loss was still descending at the 8-epoch cap while plain
+  had plateaued. The gap is therefore a statement about this budget, and the
+  budget must be closed before any scaling decision.

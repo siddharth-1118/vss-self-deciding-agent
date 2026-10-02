@@ -1,0 +1,9 @@
+resuming: 7 cells already done
+eval states: 150
+seed 13: plain=runs/mqv-plain-clinc150-s13 vss=runs/mqv-vss-clinc150-s13 (cold 2.3s / 4.7s)
+seed 13 Q=1: already done (A_equals_B=True)
+interference_Q8_s13 mean delta pts: -0.25
+interference_Q32_s13 mean delta pts: 0.0
+permutation_Q8_s13 agreement: 0.9975
+permutation_Q32_s13 agreement: 0.9996
+wrote benchmarks\multi_question_value\results\clinc150_results.json

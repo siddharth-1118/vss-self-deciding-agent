@@ -233,11 +233,16 @@ def interference_block(vss_model, examples, q_max: int,
 
     For EVERY question template present in the Q=q_max requests: its accuracy
     asked alone (Q=1) vs its accuracy inside the co-asked request (its own
-    slot). Delta near 0 means no cross-question interference; negative delta
-    means interference. Requests are built via eval_subset, so real-data
-    replication is handled in one place and slot 0 keeps the canonical trained
-    id. Solo runs are capped at `solo_cap` states per template (CPU budget);
-    joint records are grouped over all joint states.
+    slot), measured on the SAME (state, question) pairs in both arms. Delta
+    near 0 means no cross-question interference; negative delta means
+    interference. Requests are built via eval_subset, so real-data replication
+    is handled in one place and slot 0 keeps the canonical trained id.
+
+    The solo arm is capped at `solo_cap` states per template (CPU budget), and
+    the joint arm is restricted to exactly those states. Comparing a capped
+    solo arm against an uncapped joint arm measures sample composition, not
+    interference -- an earlier version did that and reported -11.5 pts where
+    the paired answer flips were 0/100.
     """
     rng = random.Random("interf:" + str(seed))
     pool = [ex for ex in examples if len(ex.questions) >= 1]
@@ -249,19 +254,45 @@ def interference_block(vss_model, examples, q_max: int,
     qids = list(dict.fromkeys(q.id for q in joint_all))
 
     joint_by_qid: dict[str, list[dict]] = {}
-    for req in vr.predict_examples(vss_model, joint_exs, batch_size=8):
-        for r in req:
-            joint_by_qid.setdefault(r["qid"], []).append(r)
-
     solo_by_qid: dict[str, list[dict]] = {}
+    flips_by_qid: dict[str, int] = {}
+
+    # pick the (state, template) pairs each arm must score, per template
+    pairs_by_qid: dict[str, list[tuple[int, object]]] = {}
     for qid in qids:
-        solo_exs = [dataset.MultiQuestionExample(state=ex.state,
-                                                 questions=[q])
-                    for ex in joint_exs for q in ex.questions if q.id == qid]
-        if len(solo_exs) > solo_cap:
-            solo_exs = solo_exs[:solo_cap]
-        recs = vr.predict_examples(vss_model, solo_exs, batch_size=8)
-        solo_by_qid[qid] = [r for req in recs for r in req]
+        pairs = [(i, q) for i, ex in enumerate(joint_exs)
+                 for q in ex.questions if q.id == qid]
+        if len(pairs) > solo_cap:
+            pairs = pairs[:solo_cap]
+        if pairs:
+            pairs_by_qid[qid] = pairs
+
+    # joint arm: ONE pass over the union of selected states (per-template
+    # passes would be quadratic in the number of templates)
+    need = sorted({i for ps in pairs_by_qid.values() for i, _ in ps})
+    joint_recs_by_index: dict[int, list[dict]] = dict(
+        zip(need, vr.predict_examples(
+            vss_model, [joint_exs[i] for i in need], batch_size=8)))
+
+    for qid, pairs in pairs_by_qid.items():
+        solo_recs = vr.predict_examples(
+            vss_model,
+            [dataset.MultiQuestionExample(state=joint_exs[i].state,
+                                         questions=[q])
+             for i, q in pairs],
+            batch_size=8)
+        solo_rows = [r for req in solo_recs for r in req]
+        joint_rows = []
+        for i, _ in pairs:
+            for r in joint_recs_by_index.get(i, []):
+                if r["qid"] == qid:
+                    joint_rows.append(r)
+                    break
+        if solo_rows and joint_rows:
+            joint_by_qid[qid] = joint_rows
+            solo_by_qid[qid] = solo_rows
+            flips_by_qid[qid] = sum(
+                1 for a, b in zip(solo_rows, joint_rows) if a["pred"] != b["pred"])
 
     deltas = {}
     for qid in qids:
@@ -275,6 +306,7 @@ def interference_block(vss_model, examples, q_max: int,
                 "delta_pts": round((j - s) * 100, 2),
                 "solo_n": len(solo_by_qid[qid]),
                 "joint_n": len(rows),
+                "paired_decision_flips": flips_by_qid.get(qid, 0),
             }
     worst = sorted(deltas.items(), key=lambda kv: kv[1]["delta_pts"])
     best = sorted(deltas.items(), key=lambda kv: -kv[1]["delta_pts"])
