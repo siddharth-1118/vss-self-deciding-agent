@@ -128,12 +128,13 @@ sensitive component. Not directly measured (no ablation of pooling).
 
 ## Unknown
 
-### U2. Whether VSS (with the interference fix) can beat the plain-head baseline on genuinely multi-question tasks
+### U2. RESOLVED — VSS does NOT beat the plain-head baseline on multi-question tasks
 Question-masked attention fixes interference exactly (D3 resolution) at −2.3
-pts solo accuracy. Whether the single-pass co-asking machinery (now
-accuracy-preserving, ~1.95× throughput) can beat a plain classifier with
-auxiliary heads on a task with per-question gold over a shared state is the
-last open architecture question.
+pts solo accuracy. **The multi-question value test answered this: the plain
+classifier wins.** See "Multi-question value test" below (D13–D18) and
+`docs/multi_question_value_report.md`. The single-pass co-asking machinery did
+not beat a plain classifier on per-question accuracy at any Q, on any of the
+three datasets; the architecture is not justified as it stands.
 
 ### U3. Multi-seed behavior of CLINC150 results
 All CLINC150 numbers are seed 13 only. Banking77 variance was 0.72 pts, but
@@ -149,6 +150,63 @@ slot count.
 
 ---
 
+---
+
+## Multi-question value test (35 cells, 3 datasets, 3 systems)
+
+Evidence: `benchmarks/multi_question_value/results/*.json`,
+`benchmarks/multi_question_value/report.md`,
+`docs/multi_question_value_report.md`.
+
+### D13. Plain classifier beats VSS on per-question accuracy — DEMONSTRATED
+At matched training budget (same tokenizer family, same header-only
+serialization, same full-inventory choice head, 8 epochs AdamW, batch 32,
+best-val checkpoint selection, ~10.5M vs 11.2M parameters), the plain
+classifier (systems A/B) beats VSS (system C) on per-question accuracy in
+**all 35 measured (dataset, Q) cells** — synthetic Q∈{1,2,4,8,16,32,50} over
+3 seeds, CLINC150 and Banking77 at Q∈{1,…,50}. Paired bootstrap (1000
+resamples) of C−B is negative everywhere with CIs excluding zero (synthetic
+Q=1 [−0.380,−0.252] → Q=50 [−0.200,−0.180]; CLINC150 Q=50 [−0.272,−0.252];
+Banking77 Q=50 [−0.435,−0.410]). VSS request accuracy reaches 0.000 from Q=8
+on synthetic (all-questions-right requirement); plain decays gracefully.
+
+### D14. VSS single-pass latency beats even the BATCHED classifier at high Q — DEMONSTRATED (conditional)
+Synthetic p50 request latency at Q=50: A sequential 778.6 ms, B batched
+304.4 ms, C VSS 110.8 ms → **7.0× vs sequential, 2.8× vs batched**
+(throughput 458 vs 166 questions/s). At Q=1 all three are within 6% of each
+other. The advantage is a function of request length, not question count: on
+CLINC150 and Banking77 (one short question per state) VSS is 1.1–1.3× *slower*
+per request and 0.82–0.85× the batched classifier's questions/s.
+
+### D15. VSS shows no cross-question interference on synthetic, but does on real data — DEMONSTRATED
+Solo-vs-joint per-template deltas (all templates, 3 seeds × Q∈{8,32,50}) on
+synthetic: **−0.13 to +2.7 pts** (no systematic interference). On real data
+(co-asked replicas of one canonical question): **−16.9/−15.6 pts (CLINC150)**
+and **−9.1/−10.5 pts (Banking77)** at Q=8/32. The real-data loss decomposes
+into a coverage drop (CLINC150 Q=8: 66.3% → 51.5%) plus an answered-accuracy
+drop (85.5% → 77.2%, i.e. −8.3 pts on answered questions).
+
+### D16. VSS's confidence gate selects a much more accurate subset on CLINC150 — DEMONSTRATED
+With the shipped threshold (0.55, blend confidence), VSS's answered questions
+are **85.5% accurate at 66.3% coverage** where the plain classifier is 68.0%
+accurate while always answering — a 17.5-pt selective-accuracy advantage. The
+advantage does not transfer to Banking77 (VSS 78.9% answered vs plain 88.7%).
+
+### D17. VSS answers are only ~74–79% order-invariant — DEMONSTRATED (new finding)
+Permuting distinct synthetic questions within one request changes the answer
+for ~21–26% of (state, question) pairs (Q=8: 0.776/0.794/0.788; Q=32:
+0.740/0.752/0.748 across seeds). The plain classifier is exactly
+order-invariant by construction. This defect was not visible in the earlier
+dose-response experiments and explains part of VSS's request-accuracy collapse.
+
+### D18. Batching does not change plain-classifier outputs — DEMONSTRATED
+Mode A ≡ mode B verified in all 35 cells (`A_equals_B: true`; 16-pair batch-1
+vs batch-32 spot check per cell, max probability difference ≤ 1e-6, pure fp32
+noise). This is why the batched classifier (B) is the honest latency
+baseline rather than the slow sequential one (A).
+
+---
+
 ## Explicit non-claims
 
 - VSS does **not** beat a TF-IDF+LR baseline on either real dataset
@@ -157,3 +215,14 @@ slot count.
   (D5). The blend confidence works, but through top-prob, not head signal.
 - "One forward pass answers N questions" is true at N=1 and false as an
   accuracy-preserving claim at large N (D3, D10).
+- **VSS is NOT validated as an architecture.** The multi-question value test
+  found the plain classifier ahead on accuracy in 35/35 cells (D13). The
+  specialized architecture is not justified over a plain classifier called once
+  per question at this budget; only the single-pass latency mechanism (D14),
+  the zero synthetic interference (D15) and the selective-accuracy gate (D16)
+  survive the experiment as genuine, narrower benefits.
+- **VSS is NOT ready to scale to 52M+ parameters.** Its synthetic validation
+  loss was still descending at the 8-epoch cap while plain had plateaued, so
+  the accuracy gap is confounded by an unconverged VSS budget; and its
+  measured order-invariance defect (D17) and real-data interference (D15) are
+  architectural, not budget, problems.

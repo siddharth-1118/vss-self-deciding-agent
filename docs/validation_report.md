@@ -273,3 +273,87 @@ question). Compare: (a) plain head + N forward passes, (b) qmask VSS, one
 pass. If (a) wins on accuracy×latency, the multi-question machinery should
 be retired in favor of a plain classifier with auxiliary heads; if (b) wins,
 VSS has its justified niche.
+
+---
+
+# 17. The multi-question value test (RESOLVED — plain classifier wins)
+
+Research trail so far: unmasked VSS (interference −3.3…−20.0 pts at
+k=2…32) → qmask VSS (dose-response flat: +0.7/+0.3/0.0/0.0/+0.3) → **this
+value test**. Nothing above is deleted or rewritten; this section only adds
+what the value test measured.
+
+## 17.1 What was run
+
+Three inference modes over identical per-question gold: **A** plain classifier
+called once per question (sequential forwards), **B** the same network batched
+over the request's questions, **C** qmask VSS answering the whole request in
+one pass. Q ∈ {1,2,4,8,16,32,50}; synthetic (3 seeds, 200 eval states,
+mixed choice/noul/score), CLINC150 and Banking77 (seed 13, 150 eval states,
+real 151-/77-label intent tasks). 35 cells; every question scored
+individually; ECE/Brier/NLL per question; p50/p95/p99 latency; paired
+bootstrap C−B; solo-vs-joint interference per template; order permutation.
+Artifacts: `benchmarks/multi_question_value/` (harness, results JSON,
+`report.md`, 15 SVG plots), `docs/multi_question_value_report.md` (21
+sections), `docs/claims.md` D13–D18. Test suite: 63 passing.
+
+## 17.2 Result
+
+**Accuracy — plain wins everywhere.** Plain beats VSS in 35/35 cells. Paired
+bootstrap C−B CI excludes zero in every cell (synthetic Q=1 [−0.380,−0.252]
+… Q=50 [−0.200,−0.180]; CLINC150 Q=50 [−0.272,−0.252]; Banking77 Q=50
+[−0.435,−0.410]). Synthetic Q=1: 0.970 vs 0.655. CLINC150: 0.680 vs 0.447.
+Banking77: 0.887 vs 0.573. VSS request accuracy collapses to 0.000 from Q=8 on
+synthetic (all-questions-right).
+
+**Calibration — mixed, mostly plain.** Plain better at Q=1–2 (synthetic ECE
+0.049 vs 0.237); VSS better on synthetic ECE at Q≥4 (0.11–0.15 vs 0.15–0.22);
+Brier/NLL favor plain in nearly every cell. The earlier "ECE answered 0.028"
+does not reproduce under this test protocol and is not comparable.
+
+**Latency — VSS wins only where requests are long.** Synthetic Q=50 p50:
+A 778.6 ms, B 304.4 ms, C 110.8 ms (7.0× vs sequential, **2.8× vs the
+batched** classifier). On real data VSS is 1.1–1.3× *slower* per request
+(CLINC150 Q=50: A 17.1 / B 17.2 / C 21.0 ms) and 0.82× the batched
+classifier's questions/s.
+
+**Interference — zero on synthetic, real on real data.** Per-template
+solo-vs-joint deltas: synthetic −0.13…+2.7 pts across 3 seeds × Q∈{8,32,50};
+CLINC150 −16.9/−15.6 pts, Banking77 −9.1/−10.5 pts at Q=8/32 (of which, on
+CLINC150 Q=8, ≈−14.8 pts is lost coverage 66.3%→51.5% and −8.3 pts is
+answered-accuracy loss 85.5%→77.2%).
+
+**Order — VSS is not order-invariant.** Distinct synthetic questions
+reordered: 74–79% agreement (Q=8 and Q=32, all seeds); plain is exactly
+order-invariant by construction. New defect, not visible in the dose-response
+work.
+
+**What VSS does own.** A confidence gate that selects an 85.5%-accurate subset
+at 66.3% coverage on CLINC150 where the always-on plain classifier is 68.0%
+(+17.5 pts selective advantage), and single-pass latency that beats even the
+*batched* classifier by 2.8× at Q=50 on long-text requests.
+
+## 17.3 Honesty notes on this experiment
+
+Two harness defects were found and fixed rather than reported as results:
+(1) the first plain real-data baselines used per-row masked CE over 15 declared
+options against 151/77 at test time (5.3% CLINC "plain"); those runs are
+quarantined as `runs/mqv-plain-*_maskedce_v1` and all reported numbers use the
+retrained full-inventory head (CLINC val loss 4.66 → 0.395);
+(2) real-data question replication initially renamed slot 0's id, pushing both
+systems onto unseen text and faking a Q=1→Q=2 collapse; slot 0 now keeps the
+canonical id. Also disclosed: the only pre-existing banking77 checkpoint is
+*unmasked* (not System C), so a qmask banking77 checkpoint was trained for
+this test (best eval 1.3206 @ epoch 3); VSS synthetic training had not
+converged at the 8-epoch cap, so its accuracy deficit is confounded by budget.
+
+## 17.4 Decision
+
+Per the decision tree, this resolves to **"plain wins" → redesign**, not
+scale. VSS's specialized architecture does not currently justify its
+complexity over a plain classifier called once per question. Preserved for a
+redesign: the single-pass multi-question mechanism (2.8× vs batched at Q=50),
+the typed per-question heads, and the confidence-gated abstention (+17.5 pts
+selective accuracy on CLINC150). To be fixed first: order-invariance and the
+abstention calibration that costs 15–17 pts of real-data accuracy. VSS is
+**not** ready to scale to 52M+ parameters.
