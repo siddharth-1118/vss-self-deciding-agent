@@ -32,12 +32,12 @@ sys.path.insert(0, str(REPO / "benchmarks" / "multi_question_value"))
 
 # ------------------------------------------------------------------ defect 1
 class TestSyntheticSplitsAreDisjoint:
-    def test_generated_splits_do_not_share_states(self):
+    def test_generated_splits_do_not_share_states(self, tmp_path):
         import dataset as mqv_dataset
 
         sizes = {"train": 40, "validation": 20, "calibration": 20, "test": 40}
         splits = {
-            name: mqv_dataset.generate_synthetic(n, seed=99, split=name, force=True)
+            name: mqv_dataset.generate_synthetic(n, seed=99, split=name, force=True, out_dir=tmp_path)
             for name, n in sizes.items()
         }
         mqv_dataset.verify_splits_disjoint(splits)  # must not raise
@@ -47,10 +47,10 @@ class TestSyntheticSplitsAreDisjoint:
         assert not (fps["train"] & fps["validation"])
         assert not (fps["validation"] & fps["test"])
 
-    def test_verify_splits_disjoint_raises_on_overlap(self):
+    def test_verify_splits_disjoint_raises_on_overlap(self, tmp_path):
         import dataset as mqv_dataset
 
-        ex = mqv_dataset.generate_synthetic(2, seed=5, split="probe_a", force=True)
+        ex = mqv_dataset.generate_synthetic(2, seed=5, split="probe_a", force=True, out_dir=tmp_path)
         with pytest.raises(ValueError, match="leakage"):
             mqv_dataset.verify_splits_disjoint({"train": ex, "test": ex})
 

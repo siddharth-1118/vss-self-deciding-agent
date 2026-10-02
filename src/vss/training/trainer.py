@@ -131,8 +131,8 @@ class Trainer:
         order = list(range(len(examples)))
         rng.shuffle(order)
         bs = self.tcfg.batch_size
-        if self.tcfg.max_steps:  # cap steps per epoch
-            order = order[: self.tcfg.max_steps * bs]
+        if self.tcfg.max_steps:  # GLOBAL step cap (was per-epoch; see config)
+            order = order[: max(1, self.tcfg.max_steps) * bs]
         losses: list[float] = []
         grad_norms: list[float] = []
         update_norms: list[float] = []
@@ -181,6 +181,8 @@ class Trainer:
                     sched.step()
             losses.append(parts["total"])
             global_step += 1
+            if self.tcfg.max_steps and global_step >= self.tcfg.max_steps:
+                break  # global step budget exhausted (docs/convergence_report.md §5)
             if step_hook is not None:
                 step_hook(global_step, bi + 1)
             if global_step % self.tcfg.log_every == 0:

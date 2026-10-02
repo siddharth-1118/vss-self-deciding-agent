@@ -41,6 +41,7 @@ from vss.model.serialize import serialize_example  # noqa: E402
 from vss.model.tokenizer import VSSTokenizer  # noqa: E402
 from vss.model.transformer import TransformerEncoder  # noqa: E402
 from vss.training.losses import score_losses  # noqa: E402
+from vss.training.trainer import effective_warmup, lr_lambda  # noqa: E402
 
 ABSTAIN = "ABSTAIN"
 
@@ -253,18 +254,22 @@ def train_plain(
     train_rows = [(ex.state, q) for ex in train_examples for q in ex.questions]
     valid_rows = [(ex.state, q) for ex in valid_examples for q in ex.questions]
     steps_per_epoch = math.ceil(len(train_rows) / cfg.batch_size)
-    total_steps = steps_per_epoch * cfg.epochs
+    total_steps = max(1, steps_per_epoch * cfg.epochs)
+    if getattr(cfg, "max_steps", None):
+        # global step budget: the cosine schedule is computed over it, so the
+        # two systems can be step-matched (same lr_lambda as VSS)
+        total_steps = min(total_steps, int(cfg.max_steps))
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr,
                             weight_decay=cfg.weight_decay)
-    warmup = cfg.warmup_steps
+    # Same schedule helpers as the VSS trainer (shared import below): the
+    # warmup is capped at a fraction of the run and step 0 gets a non-zero
+    # LR. The baseline must not be handicapped by a schedule defect, and must
+    # not be handed an advantage VSS does not get -- one code path, both arms.
+    warmup = effective_warmup(cfg.warmup_steps, cfg.warmup_frac, total_steps)
 
-    def lr_lambda(step: int) -> float:
-        if step < warmup:
-            return step / max(1, warmup)
-        progress = (step - warmup) / max(1, total_steps - warmup)
-        return 0.5 * (1.0 + math.cos(math.pi * min(1.0, max(0.0, progress))))
-
-    sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
+    sched = torch.optim.lr_scheduler.LambdaLR(
+        opt, lambda s: lr_lambda(s, warmup, total_steps, "cosine")
+    )
 
     ckpt = Path(ckpt_dir)
     ckpt.mkdir(parents=True, exist_ok=True)
@@ -291,9 +296,21 @@ def train_plain(
         for s in range(0, len(idx), bs):
             yield [rows[i] for i in idx[s : s + bs]]
 
-    def eval_val() -> float:
+    def eval_val() -> tuple[float, dict]:
+        """Row-weighted validation loss + per-task metrics.
+
+        Choice accuracy uses the SAME rule as predict_rows (softmax over the
+        row's declared options + ABSTAIN) so the selection signal matches the
+        metric the benchmark reports.
+        """
         model.eval()
         tot, n = 0.0, 0
+        n_choice = n_correct = 0
+        noul_n = noul_ok = 0
+        score_err: list[float] = []
+        conf: list[float] = []
+        correct: list[float] = []
+        has_abstain = label_to_idx.get(ABSTAIN) is not None
         with torch.no_grad():
             for chunk in batches(valid_rows, cfg.batch_size):
                 x, _ = model.encode_rows(chunk, device)
@@ -301,10 +318,59 @@ def train_plain(
                 loss = _batch_loss(out, chunk, label_to_idx, bins, device)
                 tot += float(loss) * len(chunk)
                 n += len(chunk)
+                for i, (_state, q) in enumerate(chunk):
+                    if q.type == "choice":
+                        opts = list(q.options or ())
+                        allowed = [label_to_idx[o] for o in opts]
+                        names = list(opts)
+                        if has_abstain:
+                            allowed.append(label_to_idx[ABSTAIN])
+                            names.append(ABSTAIN)
+                        probs = torch.softmax(out["choice"][i, allowed], dim=-1)
+                        pred = names[int(torch.argmax(probs))]
+                        ok = float(pred == q.answer)
+                        n_choice += 1
+                        n_correct += int(ok)
+                        correct.append(ok)
+                        conf.append(float(probs[int(torch.argmax(probs))]))
+                    elif q.type == "noul":
+                        p = float(out["noul"][i])
+                        noul_n += 1
+                        noul_ok += int((1 if p >= 0.5 else 0) == int(q.answer))
+                    else:
+                        lo, hi = q.min or 0.0, q.max or 10.0
+                        probs = torch.softmax(out["score"][i], dim=-1)
+                        centers = torch.linspace(lo, hi, bins)
+                        score_err.append(abs(float((probs * centers).sum())
+                                             - float(q.answer)))
         model.train()
-        return tot / max(1, n)
+        m = {
+            "choice_accuracy": n_correct / max(1, n_choice),
+            "choice_n": float(n_choice),
+            "noul_accuracy": noul_ok / max(1, noul_n),
+            "noul_n": float(noul_n),
+            "score_mae": sum(score_err) / max(1, len(score_err)),
+            "score_n": float(len(score_err)),
+        }
+        if correct:
+            m["row_accuracy"] = sum(correct) / len(correct)
+        return tot / max(1, n), m
 
-    history: list[dict] = []
+    # history/early-stop state live in the checkpoint so a resumed run keeps
+    # the same curve and the same patience counter
+    _st = (torch.load(ckpt / "last.pt", weights_only=False, map_location="cpu")
+           if (ckpt / "last.pt").exists() else None)
+    history: list[dict] = list(_st.get("history", [])) if _st else []
+    epochs_without_improvement = int(_st.get("epochs_without_improvement", 0)) if _st else 0
+    pinned_total = int(_st.get("schedule_total_steps", 0)) if _st else 0
+    if pinned_total:
+        # keep the LR curve identical to the uninterrupted run
+        total_steps, warmup = pinned_total, int(_st.get("schedule_warmup", warmup))
+        sched = torch.optim.lr_scheduler.LambdaLR(
+            opt, lambda s: lr_lambda(s, warmup, total_steps, "cosine")
+        )
+        sched.load_state_dict(_st["sched"])
+    stopped_early = False
     model.train()
 
     def _save(path: Path, payload: dict) -> None:
@@ -318,6 +384,8 @@ def train_plain(
         t0 = time.time()
         ep_batches = list(batches(train_rows, cfg.batch_size, seed + epoch))
         ep_loss, nb = 0.0, 0
+        grad_norms: list[float] = []
+        upd_norms: list[float] = []
         for bi, chunk in enumerate(ep_batches):
             if bi < resume_batch:
                 continue
@@ -326,45 +394,92 @@ def train_plain(
             loss = _batch_loss(out, chunk, label_to_idx, bins, device)
             opt.zero_grad(set_to_none=True)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.clip_grad_norm)
+            gn = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.clip_grad_norm)
+            grad_norms.append(float(gn))
+            before = [p.detach().clone() for p in model.parameters() if p.requires_grad]
             opt.step()
+            with torch.no_grad():
+                upd, base = 0.0, 0.0
+                for p0, p1 in zip(before, (p for p in model.parameters()
+                                           if p.requires_grad)):
+                    d = float((p1.detach() - p0).norm())
+                    upd += d * d
+                    base += float(p0.norm()) ** 2
+                upd_norms.append((upd ** 0.5) / max(1e-12, base ** 0.5))
             sched.step()
             global_step += 1
             ep_loss += float(loss)
+            if getattr(cfg, "max_steps", None) and global_step >= int(cfg.max_steps):
+                break  # global step budget exhausted
             nb += 1
             if nb % save_every == 0:
                 _save(ckpt / "last.pt",
                       {"model": model.state_dict(), "opt": opt.state_dict(),
                        "sched": sched.state_dict(), "step": global_step,
                        "epoch": epoch, "best_val": best_val,
-                       "partial": True, "batch_index": bi + 1})
+                       "partial": True, "batch_index": bi + 1,
+                       "history": history,
+                       "epochs_without_improvement": epochs_without_improvement,
+                       "schedule_total_steps": total_steps,
+                       "schedule_warmup": warmup})
             if nb % log_every == 0:
                 print(f"  epoch {epoch} batch {nb}/{len(ep_batches)} "
                       f"loss {float(loss):.4f}", flush=True)
         resume_batch = 0
-        val = eval_val()
-        history.append({"epoch": epoch, "train_loss": ep_loss / max(1, nb),
-                        "val_loss": val, "seconds": round(time.time() - t0, 1)})
+        val, vm = eval_val()
+        rec = {
+            "epoch": epoch,
+            "train_loss": ep_loss / max(1, nb),
+            "eval_loss": val,
+            "val_loss": val,
+            "lr": float(opt.param_groups[0]["lr"]),
+            "seconds": round(time.time() - t0, 1),
+            "grad_norm_mean": sum(grad_norms) / max(1, len(grad_norms)),
+            "grad_norm_max": max(grad_norms) if grad_norms else 0.0,
+            "param_update_rel_mean": sum(upd_norms) / max(1, len(upd_norms)),
+            "param_update_rel_max": max(upd_norms) if upd_norms else 0.0,
+            "n_updates": float(len(upd_norms)),
+            **vm,
+        }
+        history.append(rec)
         print(f"epoch {epoch}: train {ep_loss / max(1, nb):.4f} val {val:.4f} "
-              f"({history[-1]['seconds']}s)", flush=True)
-        is_best = val < best_val
-        best_val = min(best_val, val)
+              f"choice_acc={vm.get('choice_accuracy')} lr={rec['lr']:.2e} "
+              f"gnorm={rec['grad_norm_mean']:.3f} ({rec['seconds']}s)", flush=True)
+        is_best = val < best_val - getattr(cfg, "early_stop_min_delta", 0.0)
+        if is_best:
+            best_val = val
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
         _save(ckpt / "last.pt",
               {"model": model.state_dict(), "opt": opt.state_dict(),
                "sched": sched.state_dict(), "step": global_step,
                "epoch": epoch, "best_val": best_val,
-               "partial": False, "batch_index": 0})
+               "partial": False, "batch_index": 0, "history": history,
+               "epochs_without_improvement": epochs_without_improvement,
+               "schedule_total_steps": total_steps, "schedule_warmup": warmup})
         if is_best:
             _save(ckpt / "best.pt",
                   {"model": model.state_dict(), "epoch": epoch,
                    "val_loss": val})
+        patience = getattr(cfg, "early_stop_patience", None)
+        if (patience is not None
+                and epoch + 1 >= getattr(cfg, "min_epochs", 1)
+                and epochs_without_improvement >= patience):
+            print(f"early stop at epoch {epoch}: no val improvement >"
+                  f" {getattr(cfg, 'early_stop_min_delta', 0.0)} for"
+                  f" {epochs_without_improvement} epochs", flush=True)
+            stopped_early = True
+            break
 
     torch.save({"model": model.state_dict(), "epoch": cfg.epochs - 1,
                 "val_loss": best_val, "label_to_idx": label_to_idx},
                ckpt / "final.pt")
     if model.tokenizer is not None:
         model.tokenizer.save(ckpt / "vocab.json")
-    return {"history": history, "best_val": best_val, "steps": global_step}
+    return {"history": history, "best_val": best_val, "steps": global_step,
+            "schedule_total_steps": total_steps, "schedule_warmup": warmup,
+            "stopped_early": stopped_early, "epochs_run": len(history)}
 
 
 def load_plain(ckpt_dir: str, cfg: PlainConfig | None = None) -> PlainClassifier:

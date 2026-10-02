@@ -23,9 +23,9 @@ from config import BenchConfig, PlainConfig  # noqa: E402
 
 # ----------------------------------------------------------------- dataset
 
-def test_synthetic_gold_is_deterministic_and_verified():
-    exs_a = mqv_dataset.generate_synthetic(12, seed=7, split="goldtest", force=True)
-    exs_b = mqv_dataset.generate_synthetic(12, seed=7, split="goldtest", force=True)
+def test_synthetic_gold_is_deterministic_and_verified(tmp_path):
+    exs_a = mqv_dataset.generate_synthetic(12, seed=7, split="goldtest", force=True, out_dir=tmp_path)
+    exs_b = mqv_dataset.generate_synthetic(12, seed=7, split="goldtest", force=True, out_dir=tmp_path)
     assert len(exs_a) == len(exs_b) == 12
     for ea, eb in zip(exs_a, exs_b):
         assert ea.to_training_dict() == eb.to_training_dict()
@@ -43,8 +43,8 @@ def test_synthetic_pool_prefixes_are_nested():
             assert full[16 + i].answer_fn is not None
 
 
-def test_eval_subset_is_identical_across_modes_and_nested():
-    exs = mqv_dataset.generate_synthetic(20, seed=7, split="goldtest", force=True)
+def test_eval_subset_is_identical_across_modes_and_nested(tmp_path):
+    exs = mqv_dataset.generate_synthetic(20, seed=7, split="goldtest", force=True, out_dir=tmp_path)
     s1 = mqv_dataset.eval_subset(exs, 4, split_seed=42, cap=10)
     s2 = mqv_dataset.eval_subset(exs, 4, split_seed=42, cap=10)
     assert [(e.state, [q.id for q in e.questions]) for e in s1] == \
@@ -112,7 +112,7 @@ def test_auroc_recovers_perfect_separation():
     assert abs(mqv_metrics.auroc(scores, labels) - 1.0) < 1e-9
 
 
-def test_risk_coverage_monotone_non_increasing():
+def test_risk_coverage_monotone_non_increasing(tmp_path):
     recs = [{"qid": str(i), "type": "choice", "gold": "x", "pred": "x",
              "correct": True, "conf": 0.5 + 0.5 * i / 100, "max_prob": 1.0,
              "probs": {"x": 1.0}}
@@ -128,11 +128,12 @@ def test_risk_coverage_monotone_non_increasing():
 # --------------------------------------------------- plain classifier core
 
 @pytest.fixture(scope="module")
-def tiny_plain():
+def tiny_plain(tmp_path_factory):
     import plain_classifier as pc
     import torch
 
-    exs = mqv_dataset.generate_synthetic(4, seed=7, split="goldtest", force=True)
+    tmp_path = tmp_path_factory.mktemp("tiny_plain")
+    exs = mqv_dataset.generate_synthetic(4, seed=7, split="goldtest", force=True, out_dir=tmp_path)
     labels = pc.build_label_inventory(exs, with_abstain=False)
     cfg = PlainConfig(epochs=1, vocab_size=1024, hash_buckets=256,
                       warmup_steps=2, batch_size=2)
@@ -176,7 +177,7 @@ def test_plain_predictions_match_gold_schema(tiny_plain):
 
 # ------------------------------------------------------- VSS runner pieces
 
-def test_vss_record_extraction_from_tiny_model():
+def test_vss_record_extraction_from_tiny_model(tmp_path):
     import torch
 
     from vss.model.config import ModelConfig
@@ -193,7 +194,7 @@ def test_vss_record_extraction_from_tiny_model():
         "multi_question_value" / "_tmp_vocab.json"
     from vss.model.tokenizer import VSSTokenizer
 
-    exs = mqv_dataset.generate_synthetic(3, seed=7, split="goldtest", force=True)
+    exs = mqv_dataset.generate_synthetic(3, seed=7, split="goldtest", force=True, out_dir=tmp_path)
     texts = []
     for ex in exs:
         for q in ex.questions:

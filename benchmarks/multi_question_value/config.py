@@ -27,10 +27,18 @@ class PlainConfig:
     lr: float = 3.0e-4
     weight_decay: float = 0.01
     warmup_steps: int = 150
+    # same warmup cap + convergence controls as vss TrainingConfig, so the two
+    # systems get an identical schedule implementation and identical stopping
+    # rules (docs/convergence_audit.md finding 2)
+    warmup_frac: float | None = 0.10
     epochs: int = 8
     batch_size: int = 32
+    max_steps: int | None = None  # global step budget (step-matching)
     clip_grad_norm: float = 1.0
     score_bins: int = 64
+    early_stop_patience: int | None = None
+    early_stop_min_delta: float = 5e-3
+    min_epochs: int = 1
     seeds: list[int] = field(default_factory=lambda: list(SEEDS))
 
 

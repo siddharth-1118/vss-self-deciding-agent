@@ -358,22 +358,29 @@ def verify_splits_disjoint(splits: dict[str, list["MultiQuestionExample"]]) -> N
 
 
 def generate_synthetic(n_states: int, seed: int, split: str,
-                       force: bool = False) -> list[MultiQuestionExample]:
+                       force: bool = False,
+                       out_dir: Path | None = None
+                       ) -> list[MultiQuestionExample]:
     """Generate (or reload) the synthetic split; persist as auditable JSONL.
 
     Regeneration is deterministic in (n_states, seed, split). Existing files
     are re-verified question-by-question against the answer functions.
+
+    `out_dir` redirects the JSONL output. Tests MUST pass a tmp dir: without
+    it, a test that generates a small `train` split silently overwrites the
+    real dataset file of the same name.
     """
-    path = synth_dataset_path(split)
+    out = Path(out_dir) if out_dir is not None else OUT_DIR
+    path = out / f"synthetic_{split}.jsonl"
     if path.exists() and not force:
-        return load_synthetic(split)
+        return load_synthetic(split, out_dir=out)
     if split not in SPLIT_SEED_OFFSET:
         # Unknown/throwaway split names (tests, scratch runs) get a stable
         # name-derived offset so they still cannot alias a real split.
         offset = 7_000_011 + (zlib.crc32(split.encode()) % 1_000_000)
     else:
         offset = SPLIT_SEED_OFFSET[split]
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(seed + offset)
     examples = [make_synthetic_example(rng, split, idx=i) for i in range(n_states)]
     with open(path, "w", encoding="utf-8") as f:
@@ -382,9 +389,11 @@ def generate_synthetic(n_states: int, seed: int, split: str,
     return examples
 
 
-def load_synthetic(split: str) -> list[MultiQuestionExample]:
+def load_synthetic(split: str, out_dir: Path | None = None
+                   ) -> list[MultiQuestionExample]:
     """Load persisted synthetic split AND re-verify every gold answer."""
-    path = synth_dataset_path(split)
+    out = Path(out_dir) if out_dir is not None else OUT_DIR
+    path = out / f"synthetic_{split}.jsonl"
     out: list[MultiQuestionExample] = []
     with open(path, encoding="utf-8") as f:
         for line in f:

@@ -79,6 +79,11 @@ class TrainingConfig:
     # (2.3k-2.7k steps, 150-step warmup = 5.6-6.6%) is left untouched, so this
     # change cannot be confused with a hyperparameter change on real data.
     warmup_frac: float | None = 0.10
+    # GLOBAL optimizer-step budget for the whole run (not per epoch). The
+    # cosine schedule is computed over this budget, so a step cap is the
+    # right knob for step-matching two systems with different cost per step
+    # (VSS consumes a whole multi-question state per step; the plain baseline
+    # consumes one (state, question) row).
     max_steps: int | None = None
     epochs: int = 3
     clip_grad_norm: float = 1.0
