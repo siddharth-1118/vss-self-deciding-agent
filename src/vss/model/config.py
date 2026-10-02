@@ -70,6 +70,15 @@ class TrainingConfig:
     lr: float = 3e-4
     weight_decay: float = 0.01
     warmup_steps: int = 200
+    # Hard cap on the warmup as a FRACTION of the run. `warmup_steps` alone
+    # silently dominates short runs: on an 800-example / 8-epoch schedule
+    # (200 optimizer steps) a 150-step warmup spent 75% of training ramping
+    # up and left 50 steps of decay, which is a large part of why the
+    # synthetic VSS runs looked permanently underfit. At 10% the synthetic
+    # schedule is repaired (150 -> 20 steps) while every real-data schedule
+    # (2.3k-2.7k steps, 150-step warmup = 5.6-6.6%) is left untouched, so this
+    # change cannot be confused with a hyperparameter change on real data.
+    warmup_frac: float | None = 0.10
     max_steps: int | None = None
     epochs: int = 3
     clip_grad_norm: float = 1.0
@@ -83,6 +92,14 @@ class TrainingConfig:
     eval_every: int = 300
     checkpoint_dir: str = "runs/prototype"
     num_workers: int = 0
+    # --- convergence control (docs/convergence_audit.md) ---
+    # Stop after `patience` epochs without eval loss improving by more than
+    # `early_stop_min_delta`. None disables early stopping (train to `epochs`).
+    early_stop_patience: int | None = None
+    early_stop_min_delta: float = 1e-3
+    # Stop when eval loss has not improved for this many epochs, even if the
+    # LR schedule has not finished (catches premature schedule termination).
+    min_epochs: int = 1
 
 
 @dataclass

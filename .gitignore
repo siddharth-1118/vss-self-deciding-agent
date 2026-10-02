@@ -25,3 +25,5 @@ htmlcov/
 
 # generated dataset split caches
 benchmarks/multi_question_value/_tmp_splits/
+data/multi_question_value/synthetic_goldtest.jsonl
+data/multi_question_value/synthetic_probe_*.jsonl

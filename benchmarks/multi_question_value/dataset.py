@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import random
+import zlib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -318,6 +319,44 @@ def synth_dataset_path(split: str) -> Path:
     return OUT_DIR / f"synthetic_{split}.jsonl"
 
 
+# Per-split RNG offsets. The splits MUST be disjoint: the original generator
+# called random.Random(seed) for every split, so `validation` was literally
+# `train[:300]` and `test[:800]` was `train` — i.e. 100% of the validation
+# split and 80% of the test split were inside the training split. Offsets are
+# large and mutually non-overlapping so the draws cannot collide; the
+# invariant is additionally checked by verify_splits_disjoint().
+SPLIT_SEED_OFFSET: dict[str, int] = {
+    "train": 0,
+    "validation": 1_000_003,
+    "calibration": 2_000_003,
+    "test": 3_000_003,
+}
+ALL_SPLITS = ("train", "validation", "calibration", "test")
+
+
+def state_fingerprint(ex: "MultiQuestionExample") -> str:
+    """Canonical identity of a state: its full fact dict."""
+    return json.dumps(ex.state, sort_keys=True, separators=(",", ":"))
+
+
+def verify_splits_disjoint(splits: dict[str, list["MultiQuestionExample"]]) -> None:
+    """Raise if any state appears in more than one split.
+
+    Guards the audit finding that train/validation/test were nested prefixes of
+    one another. Cheap enough to call on every load.
+    """
+    seen: dict[str, str] = {}
+    for name in sorted(splits):
+        for ex in splits[name]:
+            fp = state_fingerprint(ex)
+            if fp in seen:
+                raise ValueError(
+                    f"synthetic split leakage: state appears in both "
+                    f"{seen[fp]!r} and {name!r}"
+                )
+            seen[fp] = name
+
+
 def generate_synthetic(n_states: int, seed: int, split: str,
                        force: bool = False) -> list[MultiQuestionExample]:
     """Generate (or reload) the synthetic split; persist as auditable JSONL.
@@ -328,8 +367,14 @@ def generate_synthetic(n_states: int, seed: int, split: str,
     path = synth_dataset_path(split)
     if path.exists() and not force:
         return load_synthetic(split)
+    if split not in SPLIT_SEED_OFFSET:
+        # Unknown/throwaway split names (tests, scratch runs) get a stable
+        # name-derived offset so they still cannot alias a real split.
+        offset = 7_000_011 + (zlib.crc32(split.encode()) % 1_000_000)
+    else:
+        offset = SPLIT_SEED_OFFSET[split]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    rng = random.Random(seed)
+    rng = random.Random(seed + offset)
     examples = [make_synthetic_example(rng, split, idx=i) for i in range(n_states)]
     with open(path, "w", encoding="utf-8") as f:
         for ex in examples:

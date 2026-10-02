@@ -120,17 +120,28 @@ class VSSEncoder:
         positions = None
         if getattr(self.encoder, "question_masked", False):
             seq_len = token_ids.shape[1]
-            state_len = min(spans[0][0][0] if spans and spans[0] else seq_len, seq_len)
-            # positions 0..state_len-1 for the state block; each question k
-            # restarts at state_len (its own block-local offset resets per q)
+            # PER-EXAMPLE state length. Taking example 0's state length for the
+            # whole batch is wrong whenever states differ in length: the
+            # question blocks of a shorter example get RoPE positions that
+            # overlap its own state block (the state assignment below runs
+            # last and overwrites them), and its question-to-state relative
+            # distances are shifted by (L_0 - L_b). That reintroduces exactly
+            # the batch-composition dependence the per-example attention mask
+            # was written to remove. Inert on the synthetic set (all states
+            # serialize to the same 32 tokens) but live on both real datasets
+            # (CLINC150 7-24 tokens, Banking77 10-30). See
+            # docs/convergence_audit.md finding 3.
             pos = torch.zeros(token_ids.shape[0], seq_len, dtype=torch.long, device=device)
             for b, spans_b in enumerate(spans):
+                own_state_len = min(
+                    spans_b[0][0] if spans_b else seq_len, seq_len
+                )
                 for i, (s, e) in enumerate(spans_b):
                     if e <= s:
                         continue
-                    pos[b, s:e] = state_len + torch.arange(e - s, device=device)
-                pos[b, : min(state_len, seq_len)] = torch.arange(
-                    min(state_len, seq_len), device=device)
+                    pos[b, s:e] = own_state_len + torch.arange(e - s, device=device)
+                n_state = min(own_state_len, seq_len)
+                pos[b, :n_state] = torch.arange(n_state, device=device)
             positions = pos
         return {"token_ids": token_ids, "spans": spans, "question_mask": qmask,
                 "positions": positions}
