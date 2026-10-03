@@ -274,9 +274,58 @@ def plan_lr_screen_real(dataset: str) -> list[Run]:
             for system in ("vss", "plain") for lr in LR_GRID_REAL]
 
 
+def selected_lr_per_dataset() -> dict[tuple[str, str], float]:
+    """Derive each (dataset, system) LR from the screen run files.
+
+    Read back from the result files rather than hand-written into a JSON file, so
+    the number a run uses can always be traced to the trial that justified it. If
+    a screen run is missing or has no history the pair is skipped rather than
+    silently defaulting to a synthetic-derived LR.
+    """
+    import lr_table
+
+    chosen: dict[tuple[str, str], float] = {}
+    for dataset in ("banking77", "clinc150"):
+        for system in ("plain", "vss"):
+            best = None
+            for lr in LR_GRID_REAL:
+                path = lr_table.find_run(system, dataset, lr)
+                if path is None:
+                    continue
+                sel = lr_table.selected_epoch(json.load(open(path)))
+                if sel is None:
+                    continue
+                loss = lr_table.val_loss_of(sel)
+                if best is None or loss < best[0]:
+                    best = (loss, lr)
+            if best is not None:
+                chosen[(dataset, system)] = best[1]
+    return chosen
+
+
+def plan_real_final(seeds=(13,), max_steps: int = 2000, tag: str = "final"):
+    """Convergence-matched real-data runs at the per-dataset screened LR.
+
+    2000 steps rather than the screen's 600: VSS is the slower converger on
+    both real datasets, so a 600-step budget under-serves it and would bias any
+    comparison toward plain. The screen exists to *pick the LR*; the ranking has
+    to come from a budget both systems can reach.
+    """
+    chosen = selected_lr_per_dataset()
+    if not chosen:
+        raise SystemExit("no completed screen runs; run --plan lr_screen_real first")
+    return [Run(system, dataset, seed, lr, EPOCH_CAP_REAL, max_steps, tag=tag)
+            for dataset in ("banking77", "clinc150")
+            for system in ("plain", "vss")
+            for seed in seeds
+            if (dataset, system) in chosen
+            for lr in (chosen[(dataset, system)],)]
+
+
 PLANS = {"screen": plan_screen, "final": plan_final, "real": plan_real,
          "lr_screen_real": lambda: plan_lr_screen_real("banking77")
-                               + plan_lr_screen_real("clinc150")}
+                               + plan_lr_screen_real("clinc150"),
+         "real_final": lambda: plan_real_final()}
 
 
 def main() -> int:
@@ -286,8 +335,13 @@ def main() -> int:
                     help="stop launching new runs after this many minutes")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--only", default=None, help="substring filter on run name")
+    ap.add_argument("--seeds", nargs="*", type=int, default=[13],
+                    help="seeds for the real_final plan")
+    ap.add_argument("--steps", type=int, default=2000,
+                    help="step budget for the real_final plan")
     a = ap.parse_args()
-    runs = PLANS[a.plan]()
+    runs = (plan_real_final(seeds=tuple(a.seeds), max_steps=a.steps)
+            if a.plan == "real_final" else PLANS[a.plan]())
     if a.only:
         runs = [r for r in runs if a.only in r.name]
     if a.list:

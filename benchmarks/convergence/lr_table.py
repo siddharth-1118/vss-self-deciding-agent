@@ -35,15 +35,30 @@ def find_run(system: str, dataset: str, lr: float) -> str | None:
     return None
 
 
+def val_loss_of(h: dict) -> float | None:
+    """Validation loss for either trainer.
+
+    plain writes `val_loss`; the VSS trainer writes `eval_loss`. Both denote the
+    same quantity *within* a system. They are **not** comparable across systems:
+    VSS's eval loss includes a calibration BCE and a soft-ordinal term that the
+    plain loss never had. Selection is always within one system, so this is safe
+    for picking an LR -- but the two columns must never be compared.
+    """
+    for key in ("val_loss", "eval_loss"):
+        if h.get(key) is not None:
+            return float(h[key])
+    return None
+
+
 def selected_epoch(run: dict) -> dict | None:
     """The epoch the run selected: lowest validation loss.
 
     Ties resolve to the earlier epoch, matching a strict-improvement rule.
     """
-    history = [h for h in run.get("history", []) if h.get("val_loss") is not None]
+    history = [h for h in run.get("history", []) if val_loss_of(h) is not None]
     if not history:
         return None
-    return min(history, key=lambda h: h["val_loss"])
+    return min(history, key=lambda h: val_loss_of(h))
 
 
 def main() -> int:
@@ -66,16 +81,18 @@ def main() -> int:
                 if sel is None:
                     print(f"{system:7s} {dataset:10s} {lr:>7g} {'no hist':>9s}")
                     continue
+                loss = val_loss_of(sel)
                 acc = sel.get("choice_accuracy")
                 n = sel.get("choice_n")
-                print(f"{system:7s} {dataset:10s} {lr:>7g} {sel['val_loss']:>9.4f} "
+                print(f"{system:7s} {dataset:10s} {lr:>7g} {loss:>9.4f} "
                       f"{acc:>10.4f} {int(n):>5d} {sel['epoch']:>3d} "
                       f"{run.get('wall_seconds', 0):>6.0f}")
                 key = (dataset, system)
-                if key not in best or sel["val_loss"] < best[key][0]:
-                    best[key] = (sel["val_loss"], lr)
+                if key not in best or loss < best[key][0]:
+                    best[key] = (loss, lr)
 
-    print("\nselected LR per (dataset, system) -- validation loss only:")
+    print("\nselected LR per (dataset, system) -- lowest validation loss within "
+          "that system (losses are NOT comparable across systems):")
     for dataset in DATASETS:
         for system in SYSTEMS:
             entry = best.get((dataset, system))
