@@ -23,6 +23,7 @@ reason its synthetic numbers are being re-measured from scratch.**
 | 4 | MODERATE | `evaluate()` averaged per-batch means, so selection depended on batch composition | validation signal |
 | 5 | **CRITICAL** | epoch loop ignored the global step budget; post-budget epochs ran at `lr=0` and faked an early stop | real data only |
 | 6 | MODERATE | mid-epoch checkpoints wrote `history=[]`, wiping a resumed run's per-epoch records | real data only, resumed runs |
+| 7 | **MAJOR** | checkpoint selection used total eval **loss**, which for VSS includes calibration + ordinal terms that do not track choice accuracy | VSS on real data; cost up to 8 accuracy points |
 
 Findings 5 and 6 were found **after** the synthetic study was concluded, while
 re-running the real-data arms. Neither can appear in a short, uninterrupted run:
@@ -215,6 +216,56 @@ history; against the pre-fix trainer it fails with
 and resumed — again, i.e. only on real data, and only because this box wedges
 every ~26 min of CPU. Neither the synthetic study nor a single-shot run would
 have surfaced it.
+
+### Finding 7 — MAJOR: checkpoint selection used a loss that does not measure the reported metric
+
+`best.pt` was chosen by minimum evaluation **loss**, and the early-stopping
+counter used the same quantity. For the plain classifier that is nearly
+equivalent to accuracy, because its validation loss *is* choice cross-entropy.
+For VSS it is not: `combined_loss` sums choice CE with a calibration BCE and a
+soft-ordinal term, so the total moves for reasons that have nothing to do with
+whether the choice head is right.
+
+Measured on the three-seed Banking77 runs, comparing the loss-selected epoch
+with the best-accuracy epoch **inside the same run**:
+
+| system | s7 | s13 | s21 | mean cost |
+|---|---:|---:|---:|---:|
+| plain | +0.015 | +0.015 | +0.000 | +0.010 |
+| VSS | **+0.080** | +0.000 | +0.025 | **+0.035** |
+
+VSS lost up to 8 accuracy points to its own selection rule; plain lost at most
+1.5. The asymmetry is structural, not chance: VSS's loss curve is visibly
+non-monotonic while its accuracy climbs monotonically. Seed 7 shows it —
+accuracy `0.425 → 0.685 → 0.765 → 0.755 → 0.845 → 0.840` against eval loss
+`3.05 → 1.75 → 1.548 → 1.96 → 1.564 → 1.77`. The minimum sits at epoch 2
+(0.765) while 0.845 was available at epoch 4. The early-stopping counter
+inherits the same noise, so the run halted at epoch 6 with accuracy still
+improving.
+
+**Fix.** `src/vss/training/selection.py` holds one shared implementation, and
+both trainers import it — selecting on validation choice accuracy with loss as
+the tie-break, with `loss` still selectable. Sharing one module is deliberate:
+the two systems drifting apart in a protocol detail is exactly what produced
+`header_only_choice` (D26).
+
+Effect, recomputed from the already-recorded histories so no retraining was
+needed (`python benchmarks/convergence/seed_table.py`):
+
+| dataset | system | loss-selected | accuracy-selected |
+|---|---|---:|---:|
+| Banking77 | plain | 0.8783 (sd 0.0076) | **0.8883** (sd 0.0058) |
+| Banking77 | VSS | 0.8300 (sd 0.0650) | **0.8650** (sd 0.0265) |
+| CLINC150 | VSS | 0.6750 | **0.7300** |
+
+Roughly half of VSS's Banking77 deficit and most of its seed instability were
+its own selection rule. **The headline verdict does not change** — plain still
+leads both datasets — but the gap is smaller and better understood, and the
+stability claim needed qualifying.
+
+This is validation-based selection only: the test split is never consulted and no
+metric definition changes. The reported number is still choice accuracy on
+held-out data, now taken from the checkpoint validation says is best for it.
 
 ---
 
