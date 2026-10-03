@@ -95,6 +95,10 @@ class TrainingConfig:
     score_ordinal_weight: float = 0.25
     log_every: int = 50
     eval_every: int = 300
+    # optimizer steps between mid-epoch checkpoints. These carry the pinned
+    # schedule shape and the accumulated epoch history, so a kill+resume is
+    # equivalent to an uninterrupted run (docs/convergence_audit.md finding 6).
+    ckpt_every: int = 100
     checkpoint_dir: str = "runs/prototype"
     num_workers: int = 0
     # --- convergence control (docs/convergence_audit.md) ---

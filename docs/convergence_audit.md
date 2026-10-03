@@ -125,6 +125,82 @@ not comparable across epochs with different batch shapes.
 Noul accuracy, Score MAE, ECE, gradient norms and parameter-update ratios.
 Early stopping (`patience`, `min_delta`, `min_epochs`) is configurable.
 
+### Finding 5 — CRITICAL: the epoch loop ignored the global step budget
+
+Found while re-running the real-data arms, after Findings 1–4 had already been
+fixed and the synthetic study had been concluded.
+
+`max_steps` is a **global** optimizer-step budget (Finding 2's fix), but only the
+*inner* batch loop checked it. The `for epoch in range(...)` loop did not. On any
+dataset where the budget is smaller than `steps_per_epoch x epochs`, the budget
+runs out partway through an epoch and the outer loop keeps going:
+
+- epoch 0 trains normally until the budget is hit;
+- every subsequent epoch runs **one** batch, whose `lr_lambda` is already 0, and
+  then evaluates.
+
+banking77 is 9079 train examples at batch 32 = **283 steps/epoch**, so a 400-step
+budget expires 1.4 epochs in. The observed banking77 runs reported
+`steps=402, epochs_run=4, stopped_early=True`: epochs 2 and 3 were single-batch
+no-ops at `lr=0.00e+00` with bit-identical validation loss
+(2.1219796562194824 three epochs running), and because each no-op epoch still
+incremented `epochs_without_improvement`, **early stopping fired on epochs that
+could not have learned anything**. The runs were reported as having
+"converged"; they had in fact simply run out of schedule.
+
+The same fault is why the VSS arm's train loss fell 2.05 → 0.49 while eval loss
+stayed flat at 2.3443: memorization with a dead learning rate, not convergence.
+
+This also means the *real-data rows of the first sweep are void*, not merely
+under-trained — the reported `best_loss`, `epochs_run` and `stopped_early` for
+both banking77 arms describe a run that spent 3 of its 4 epochs doing nothing.
+They are quarantined in `benchmarks/convergence/runs_invalid_budget400/` and
+excluded from `tables.md`.
+
+**Fix.** Both trainers (`src/vss/training/trainer.py`,
+`benchmarks/multi_question_value/plain_classifier.py`) now break out of the
+epoch loop as soon as `global_step >= max_steps`, printing an explicit
+"step budget exhausted" line. Budget exhaustion is no longer reported as
+`stopped_early`. Three regression tests in
+`tests/test_convergence_audit.py::TestGlobalStepBudgetTerminatesEpochLoop` pin
+this: two of them fail against the pre-fix trainer (verified by reverting the
+guard).
+
+**Lesson.** The synthetic study was immune because 800 examples at batch 32 = 25
+steps/epoch, so a 400-step budget spans 16 epochs and the budget never expires
+mid-run. The bug only fires on real datasets, i.e. exactly where the study was
+about to make its scaling decision. A cheap guard against this class is to
+assert, in any sweep harness, that `steps_run <= max_steps + batch_size`.
+
+### Finding 6 — MODERATE: mid-epoch checkpoints wiped the run history
+
+Also found on banking77, and only after a run survived several wedge/resume
+cycles. The mid-epoch step hook called `_checkpoint(..., partial=True)` without
+passing `history`, and `_checkpoint` defaults it to `[]`. Every partial
+checkpoint therefore overwrote the accumulated per-epoch records with an empty
+list, and `fit()` read that back as `history = []` on resume. The run JSON for
+`vss-banking77-s13-lr0.0003-st1200-s13` therefore begins at **epoch 1**; epoch 0
+(val 2.7865, choice 0.485) survives only in the log, not in the result file.
+
+The model, the optimizer and the pinned schedule were unaffected, so the run's
+*conclusions* stand — but the result file under-reports the run, which directly
+violates the study's rule that every reported number is regenerated from the run
+JSONs. The plain baseline was not affected (its partial save already passed
+`history`).
+
+**Fix.** The hook now forwards `history` and `epochs_without_improvement`. The
+hard-coded 100-step checkpoint interval became `TrainingConfig.ckpt_every` so the
+behaviour is testable. A regression test
+(`TestMidEpochCheckpointPreservesHistory`) intercepts checkpoint writes and
+asserts no partial checkpoint taken after a completed epoch carries an empty
+history; against the pre-fix trainer it fails with
+`[(1, True, []), (1, True, []), (2, True, []), (2, True, [])]`.
+
+**Lesson.** This defect class only appears on runs long enough to be interrupted
+and resumed — again, i.e. only on real data, and only because this box wedges
+every ~26 min of CPU. Neither the synthetic study nor a single-shot run would
+have surfaced it.
+
 ---
 
 ## 2. Checks that passed

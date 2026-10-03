@@ -190,6 +190,31 @@ split with converged, presentation-matched models, the synthetic cells are a
 Q=8–16 is VSS abstaining rather than answering wrongly. See D21. The real-data
 cells were not re-run and are withdrawn pending that work.
 
+### D24. On Banking77 at a matched 1200-step budget VSS leads plain 0.870 vs 0.820 — DEMONSTRATED but NOT a ranking (1 seed, under-converged)
+The first real-data re-run at a valid budget (audit findings 5 and 6 fixed;
+real states carry exactly one question, so matched steps are also matched
+presentations): **VSS 0.8700 choice accuracy / val 1.2035 / 949 s**, **plain
+0.8200 / val 0.7662 / 1979 s**. VSS leads by 5.0 pts at 2.1x lower wall-clock.
+Source: `benchmarks/convergence/runs/{vss,plain}-banking77-s13-lr0.0003-st1200-s13.json`.
+
+Three things this claim is **not**:
+
+1. **Not a real-data ranking.** Neither system converges at 1200 steps. The
+   pre-audit plain checkpoint (`runs/mqv-plain-banking77-s13/best.pt`, epoch 6,
+   ~1988 steps) reached val 0.5206 and 0.8867 test accuracy — *above* VSS's
+   0.870. So the comparison is step-matched but not convergence-matched.
+2. **Not a ceiling for VSS.** Its 0.870 is at epoch 4, the final epoch, with the
+   LR already annealed to 0 — it is a floor.
+3. **Not a replication.** One seed; validation *loss* is not comparable across
+   systems (VSS carries calibration-BCE and ordinal terms); Noul and Score MAE
+   are vacuous on Banking77 (single `choice` question per state, both score 0.0).
+
+What it does establish: the previously reported Banking77 numbers (VSS 0.76 vs
+plain 0.8867) came from a VSS checkpoint frozen at `lr=0` for 3 of its 4 epochs.
+Fixing that alone moved VSS from 0.645 (void 400-step run) to 0.870, i.e.
+**+22.5 points from Findings 5/6**, which is far larger than any architectural
+difference the study has measured.
+
 ### D21. At matched data exposure VSS and the plain classifier are tied on synthetic — DEMONSTRATED (1 seed)
 Converged, early-stopped, identical schedule implementation and LR selection
 (3e-4 for both), matched (state, question) presentations (VSS 400 steps x 8
@@ -323,3 +348,11 @@ Banking77 (0.998/0.999) figures come from pre-audit-fix code and are
   results in this file were produced before the convergence audit and before the
   RoPE position fix; their order-invariance, interference and selective-accuracy
   figures are withdrawn as known-suspect, not as disproven.
+- **The first real-data re-run attempt was itself void.** While starting it, audit
+  finding 5 was found: the epoch loop ignored the global step budget, so on
+  banking77 (283 steps/epoch) a 400-step budget produced 4 reported epochs of
+  which 3 were single-batch no-ops at `lr=0`, and the early stop that closed them
+  was an artifact of the budget expiring. Those two runs are quarantined in
+  `benchmarks/convergence/runs_invalid_budget400/` and are **not evidence in
+  either direction**. The synthetic study is unaffected by finding 5 (400 steps
+  spans 16 epochs there). Re-runs are at 1200 steps.

@@ -173,19 +173,74 @@ This is the strongest surviving argument for the architecture, and it is
 **opposite** to what the starved runs suggested (where the gate looked
 uninformative because the model behind it had barely trained).
 
-## 7. Limitations — read before acting on this
+## 7. Real data — Banking77, re-measured at a valid budget
+
+Both Banking77 arms were re-run after Findings 5 and 6 were fixed, at a **1200-step
+budget** (the 400-step budget of the first attempt is void; see §8 limitation 2).
+Selection is on validation only. Regenerated from
+`benchmarks/convergence/runs/*banking77*st1200*.json`.
+
+On the real datasets each state carries exactly **one** question, so a matched
+step count is *also* a matched presentation count — the fairness problem that
+dominated the synthetic comparison does not arise here.
+
+| system | steps | epochs | early stop | best choice acc | best val loss | wall s | params |
+|---|---:|---:|---|---:|---:|---:|---:|
+| VSS | 1200 | 4 | False | **0.8700** | 1.2035 | 949 | 11,164,483 |
+| plain | 1200 | 5 | False | 0.8200 | 0.7662 | 1979 | 10,525,582 |
+
+**VSS leads on choice accuracy by 5.0 pts at 2.1× lower wall-clock.** (Noul and
+Score MAE are vacuous here — Banking77 states carry a single `choice` question,
+so both systems score 0.0/0.0 and those columns are omitted. Validation *loss* is
+not comparable across systems, §3.)
+
+The void run is the reason this is worth reporting at all: at the 400-step budget
+the same VSS configuration reached only **0.645** and was frozen from epoch 1
+onward (`lr=0.00e+00`). At a valid budget it reaches **0.870**. So Findings 5/6
+alone account for **+22.5 accuracy points** of VSS's Banking77 accuracy.
+
+**But this does not settle the real-data ranking, for two honest reasons:**
+
+1. **Neither system was given enough budget to converge at 1200 steps.** The
+   pre-audit checkpoints in `runs/mqv-vss-banking77-s13` and
+   `runs/mqv-plain-banking77-s13` were trained to **epoch 6 / ~1988 steps**, and
+   the plain one reached val loss 0.5206 and 0.8867 test accuracy there. At 1200
+   steps plain reaches only 0.7662. So the matched comparison above is
+   step-matched, **not** convergence-matched for plain.
+2. **VSS was still improving when the budget ended.** Its best accuracy is at
+   epoch 4, the last epoch, with `lr` already annealed to 0 — so 0.870 is a
+   floor, not a ceiling.
+
+Net: the earlier "plain wins" reading on Banking77 (VSS 0.76 vs plain 0.8867) is
+**not confirmed** by the only like-for-like comparison available, and the
+matched-budget comparison now favours VSS. Deciding the real-data ranking needs
+both systems trained to genuine convergence at a common budget — which at
+~1.6 s/step for plain and ~0.8 s/step for VSS is roughly another 1.5–2 h per arm
+on this box.
+
+## 8. Limitations — read before acting on this
 
 1. **One seed.** Every number above is seed 1. No seed CI, no variance estimate.
    The task asked for 3 (5 if practical); the box was running at ~50% external
    load for the whole study and a VSS epoch cost ~5.5 min, so 3 seeds × 4 arms was
    not affordable. Differences below ~2 pts must not be treated as real.
-2. **Synthetic only.** CLINC150 and Banking77 were **not** re-trained or
-   re-benchmarked. Their splits are verified clean, but audit finding 3 (stable
-   RoPE positions taken from example 0's state length) is **live on both** —
-   state lengths are 7-24 and 10-30 tokens there versus a uniform 32 on
-   synthetic. Their previously reported order-invariance and interference
-   numbers are therefore known-suspect and are withdrawn until re-run. The
-   question "how much did real-data performance change?" is **not answered**.
+2. **A second audit finding invalidated the first real-data runs, and the
+   re-run is itself budget-limited.** After Findings 1–4 were fixed and the
+   synthetic study concluded, audit **Finding 5** (the epoch loop ignored the
+   global step budget) was found while starting the real-data arms. On banking77 a
+   400-step budget is 1.4 epochs, so 3 of the run's 4 epochs were single-batch
+   no-ops at `lr=0`, and the "early stop" that closed them was an artifact of the
+   budget expiring. Both banking77 arms from that first attempt are **quarantined**
+   in `benchmarks/convergence/runs_invalid_budget400/` and are **not** evidence in
+   either direction. **Finding 6** (mid-epoch checkpoints wiped the run history)
+   was found in the same re-run and fixed. The synthetic study is unaffected by
+   both (800 examples at batch 32 = 25 steps/epoch, so 400 steps spans 16 epochs;
+   and the synthetic runs were never interrupted). §7 re-measures Banking77 at
+   1200 steps and finds VSS ahead 0.870 vs 0.820 — but neither system is
+   converged at that budget, so the real-data *ranking* remains open. CLINC150
+   re-runs at the same budget; audit finding 3 (stable RoPE positions from
+   example 0's state length) is fixed in code but its earlier order-invariance
+   and interference numbers stay withdrawn until re-run on the new checkpoints.
 3. **Absolute timings are contended.** The machine ran at ~50% CPU from an
    unrelated process, inflating per-step cost ~4× versus the earlier idle runs.
    Within-cell latency ratios are measured back-to-back and remain valid;
@@ -199,7 +254,7 @@ uninformative because the model behind it had barely trained).
    before this study. §6 shows the curve, so this is a missed opportunity rather
    than a confound, but no threshold was selected on test.
 
-## 8. What this does and does not license
+## 9. What this does and does not license
 
 **Licensed:**
 
@@ -210,19 +265,46 @@ uninformative because the model behind it had barely trained).
 - VSS reaches a genuine convergence point and does not over-train on synthetic.
 - VSS's multi-question efficiency claim survives (2.7× vs *batched* plain).
 - VSS's selective prediction is demonstrably useful where plain's is not.
+- On **Banking77 at a matched 1200-step budget**, VSS leads plain 0.870 vs 0.820
+  at 2.1× lower wall-clock (§7). The previously reported Banking77 ranking
+  (plain 0.8867 vs VSS 0.76) is **not reproduced** and is withdrawn.
 
 **Not licensed:**
 
-- Any claim about real data. Nothing here re-measures CLINC150 or Banking77.
-- Any scaling decision. This is one seed, one dataset, one budget.
-- A general statement that "VSS ≥ plain": the tie is at this budget on this
-  data, and plain wins Q≥32 outright.
+- A real-data **ranking** claim. §7 is step-matched but not convergence-matched;
+  plain's own 1988-step checkpoint reached 0.8867, above VSS's 0.870.
+- Any claim about CLINC150 until its re-run lands.
+- Any scaling decision. This is one seed, and one converged dataset.
+- A general statement that "VSS ≥ plain": on synthetic the two tie, and plain
+  wins Q≥32 outright.
 
-## 9. Smallest next experiments, in priority order
+## 10. Decision gates
 
-1. **Re-run CLINC150 and Banking77** with the audit fixes and matched
-   presentations (VSS 1 step ≈ 8 question-presentations). Everything real-data
-   currently rests on known-suspect numbers. *Highest value by far.*
+Each gate is answered from the evidence above only. "Open" means this study
+cannot decide it, and says why.
+
+| # | Gate | Verdict | Basis |
+|---|---|---|---|
+| G1 | Is the gap explained by **under-training (A)**? | **Yes** | VSS's loss was still falling at the old 8-epoch cap; at a real convergence point the synthetic gap disappears (0.870 vs 0.868) |
+| G2 | Is the gap explained by an **optimization/schedule defect (B)**? | **Yes** | Finding 2 (warmup ate 75% of the schedule; `lr_lambda(0)==0`) and Finding 5 (epoch loop ignored the step budget) were both real and both depressed VSS |
+| G3 | Is the gap explained by the **architecture/objective (C)**? | **No, on synthetic** | With A and B fixed the two systems tie on all three task types at matched data exposure; no architecture-specific deficit is needed to explain the earlier loss |
+| G4 | Is the verdict **inconclusive (D)**? | **Yes, for real data** | Banking77 is now re-measured (§7) and favours VSS 0.870 vs 0.820, but at a budget neither system converges at, so it does not establish a ranking. G1–G3 rest on synthetic plus one under-converged real dataset, one seed |
+| G5 | Does this license a **larger-scale / 52M-parameter run**? | **No** | A tie on synthetic at one seed, and an under-converged real comparison, are not a scaling rationale. The correct reading is "the architecture was not guilty as charged", not "the architecture is better" |
+| G6 | Does the **multi-question benchmark** need withdrawing? | **The ranking, yes** | "Plain wins 35/35" was measured against a contaminated split, a starved VSS schedule and an 8× budget advantage. The *latency* and *selective-prediction* results survive |
+
+**G1–G3 are answered for synthetic and remain unanswerable for real data.** The
+Banking77 re-run (§7) is the first real-data measurement at a valid budget, and it
+removes the old "plain wins" reading rather than confirming a new one: VSS is
+ahead at matched steps but neither arm has converged. G4 is the honest umbrella:
+this is a diagnosis (A+B, not C) at one seed, enough to *clear* the architecture
+of the earlier failure, not enough to prefer it.
+
+## 11. Smallest next experiments, in priority order
+
+1. **Finish the real-data convergence runs** at a budget where *both* systems
+   actually converge (~2000 steps, matching the pre-audit checkpoints). §7 shows
+   the 1200-step Banking77 comparison is step-matched but not
+   convergence-matched, so it cannot settle the ranking. CLINC150 is mid-run.
 2. **3 seeds** on synthetic for the two converged configurations, to put a CI on
    the 0.870 / 0.8675 tie — if the gap is ~0 ± 0.01 the architectures are
    equivalent on this task and the choice should be made on latency and
@@ -231,3 +313,7 @@ uninformative because the model behind it had barely trained).
    VSS's Q≥32 deficit is architectural or a generalisation artifact.
 4. **Re-tune the abstention threshold on the calibration split** (never test)
    and re-measure whether the gate's operating point should move.
+5. **Re-run the Banking77/CLINC150 multi-question benchmark** on these new
+   checkpoints once they exist. The old order-invariance / interference /
+   selective-accuracy numbers come from pre-audit checkpoints and stay withdrawn
+   until then.

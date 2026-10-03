@@ -223,3 +223,117 @@ def _toy_example(i: int = 0):
              "min": 0.0, "max": 10.0},
         ],
     })
+
+
+class TestGlobalStepBudgetTerminatesEpochLoop:
+    """Audit finding 5: the epoch loop ignored the GLOBAL step budget.
+
+    On a dataset where `max_steps` < steps-per-epoch x epochs, the budget runs
+    out mid-epoch. The loop used to keep spinning, running one lr==0 batch per
+    remaining epoch and evaluating after each. That wasted wall-clock and
+    inflated `epochs_without_improvement`, so early stopping reported a
+    "convergence" that was really just the budget expiring. Observed on
+    banking77: 4 reported epochs for a 400-step budget, 3 of them no-ops.
+    """
+
+    def _cfg(self, tmp_path, **kw):
+        from vss.model.config import VSSConfig
+
+        m = ModelConfig(hidden_size=32, layers=1, heads=2, kv_heads=2,
+                        intermediate_size=64, vocab_size=256, hash_buckets=64,
+                        option_slots=32, score_bins=8, question_masked=True,
+                        dropout=0.0)
+        t = TrainingConfig(seed=1, epochs=8, batch_size=2, warmup_steps=1,
+                           checkpoint_dir=str(tmp_path), log_every=10_000,
+                           **kw)
+        return m, VSSConfig(model=m, training=t)
+
+    def test_epochs_run_never_exceeds_steps_taken(self, tmp_path):
+        m, full = self._cfg(tmp_path, max_steps=5)
+        ex = _toy_example()
+        model = VSSModel(m)
+        # 4 examples / batch 2 = 2 steps per epoch, budget 5 -> at most 3 epochs
+        tr = Trainer(model, full, [ex] * 4, [ex])
+        out = tr.fit()
+        assert out["steps"] <= 5 + 1
+        assert out["epochs_run"] <= 3, out["history"]
+
+    def test_budget_exhaustion_is_not_reported_as_early_stop(self, tmp_path):
+        m, full = self._cfg(tmp_path, max_steps=5, early_stop_patience=2,
+                            early_stop_min_delta=1e-9, min_epochs=1)
+        ex = _toy_example()
+        model = VSSModel(m)
+        tr = Trainer(model, full, [ex] * 4, [ex])
+        out = tr.fit()
+        # The budget ended the run, so this is NOT an early stop on a plateau.
+        assert out["stopped_early"] is False
+        assert out["steps"] >= 5
+
+    def test_no_epoch_runs_at_zero_lr_after_budget(self, tmp_path):
+        m, full = self._cfg(tmp_path, max_steps=4)
+        ex = _toy_example()
+        model = VSSModel(m)
+        tr = Trainer(model, full, [ex] * 4, [ex])
+        out = tr.fit()
+        # Every reported epoch must contain real optimizer work.
+        assert all(e.get("n_updates", 0) > 0 for e in out["history"]), out["history"]
+
+    def test_resume_after_budget_exhaustion_does_not_spin(self, tmp_path):
+        """A resumed run whose budget is already spent must exit, not re-epoch."""
+        m, full = self._cfg(tmp_path, max_steps=4)
+        ex = _toy_example()
+        tr = Trainer(VSSModel(m), full, [ex] * 4, [ex])
+        first = tr.fit()
+        assert first["steps"] >= 4
+        # simulate the harness resuming from the finished checkpoint
+        tr2 = Trainer(VSSModel(m), full, [ex] * 4, [ex])
+        out = tr2.fit(resume_from=str(tmp_path / "last.pt"))
+        assert out["steps"] == first["steps"]
+        assert out["epochs_run"] == first["epochs_run"]
+        assert out["stopped_early"] is False
+
+
+class TestMidEpochCheckpointPreservesHistory:
+    """Audit finding 6: partial checkpoints wiped the per-epoch history.
+
+    The mid-epoch step hook called _checkpoint() without `history=`, which
+    defaults to []. Any run killed mid-epoch (the normal case on this box) and
+    resumed therefore lost every previously completed epoch from its run JSON.
+    Observed on banking77: the recorded history started at epoch 1 and epoch 0
+    existed only in the log.
+    """
+
+    def test_partial_checkpoints_carry_completed_epochs(self, tmp_path, monkeypatch):
+        from vss.model.config import VSSConfig
+
+        m = ModelConfig(hidden_size=32, layers=1, heads=2, kv_heads=2,
+                        intermediate_size=64, vocab_size=256, hash_buckets=64,
+                        option_slots=32, score_bins=8, question_masked=True,
+                        dropout=0.0)
+        t = TrainingConfig(seed=1, epochs=3, batch_size=2, warmup_steps=1,
+                           checkpoint_dir=str(tmp_path), log_every=10_000,
+                           ckpt_every=1)
+        full = VSSConfig(model=m, training=t)
+        ex = _toy_example()
+        tr = Trainer(VSSModel(m), full, [ex] * 4, [ex])
+
+        # intercept every checkpoint write so a mid-epoch (partial) one is
+        # observable -- a completed epoch immediately overwrites it on disk
+        seen: list[tuple[int, bool, list]] = []
+        orig = tr._checkpoint
+
+        def spy(path, epoch, global_step, best_loss, partial=False,
+                batch_index=0, history=None, epochs_without_improvement=0):
+            seen.append((epoch, partial, list(history or [])))
+            return orig(path, epoch, global_step, best_loss, partial,
+                        batch_index, history, epochs_without_improvement)
+
+        monkeypatch.setattr(tr, "_checkpoint", spy)
+        tr.fit()
+
+        partials = [s for s in seen if s[1]]
+        assert partials, "no mid-epoch checkpoint was written"
+        # every partial checkpoint taken after epoch 0 has completed must carry
+        # the epochs that finished before it
+        lossy = [s for s in partials if s[0] >= 1 and not s[2]]
+        assert not lossy, f"partial checkpoints dropped history: {lossy}"

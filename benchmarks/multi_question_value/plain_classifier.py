@@ -381,6 +381,14 @@ def train_plain(
         tmp.replace(path)
 
     for epoch in range(start_epoch, cfg.epochs):
+        # `max_steps` is a GLOBAL budget (docs/convergence_report.md 5). Once it
+        # is spent every remaining epoch would run one batch at lr==0 and then
+        # evaluate, inflating `epochs_without_improvement` and triggering a
+        # meaningless early stop. See docs/convergence_audit.md finding 5.
+        if getattr(cfg, "max_steps", None) and global_step >= int(cfg.max_steps):
+            print(f"step budget exhausted ({global_step}/{int(cfg.max_steps)})"
+                  f" at epoch {epoch}; stopping", flush=True)
+            break
         t0 = time.time()
         ep_batches = list(batches(train_rows, cfg.batch_size, seed + epoch))
         ep_loss, nb = 0.0, 0

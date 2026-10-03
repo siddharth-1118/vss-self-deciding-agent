@@ -252,14 +252,35 @@ class Trainer:
         for _ in range(global_step):
             sched.step()
 
-        ckpt_every = 100  # steps between mid-epoch checkpoints [vss]
+        ckpt_every = max(1, int(getattr(tcfg, "ckpt_every", 100)))
         for epoch in range(start_epoch, tcfg.epochs):
+            # The step budget is GLOBAL, so on any dataset large enough that
+            # `max_steps` is smaller than len(train)*epochs the budget runs out
+            # partway through an epoch. Without this guard the loop keeps
+            # spinning: each later epoch runs a single batch at lr==0 and then
+            # evaluates, which burns wall-clock AND increments
+            # `epochs_without_improvement`, so early stopping fires on epochs
+            # that could not have learned anything. See
+            # docs/convergence_audit.md finding 5.
+            if tcfg.max_steps and global_step >= tcfg.max_steps:
+                print(f"step budget exhausted ({global_step}/{tcfg.max_steps})"
+                      f" at epoch {epoch}; stopping", flush=True)
+                break
             t0 = time.time()
             steps_at_epoch_start = global_step
 
             def hook(gs: int, batch_index: int, _epoch: int = epoch, _s0: int = steps_at_epoch_start) -> None:
                 if (gs - _s0) % ckpt_every == 0:
-                    self._checkpoint(ckpt_dir / "last.pt", _epoch, gs, best_loss, partial=True, batch_index=batch_index)
+                    # `history` MUST be passed through: _checkpoint defaults it to
+                    # [], so omitting it made every mid-epoch checkpoint wipe the
+                    # per-epoch records, and a resumed run silently restarted its
+                    # history from the current epoch. Observed on banking77, where
+                    # the run JSON began at epoch 1 and epoch 0 survived only in
+                    # the log. See docs/convergence_audit.md finding 6.
+                    self._checkpoint(ckpt_dir / "last.pt", _epoch, gs, best_loss,
+                                     partial=True, batch_index=batch_index,
+                                     history=history,
+                                     epochs_without_improvement=epochs_without_improvement)
 
             global_step, losses, stats = self.train_epoch(
                 self.train, epoch, global_step, sched,

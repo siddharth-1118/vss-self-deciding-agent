@@ -217,9 +217,6 @@ def plan_real() -> list[Run]:
 PLANS = {"screen": plan_screen, "final": plan_final, "real": plan_real}
 
 
-PLANS = {"screen": plan_screen, "final": plan_final}
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--plan", choices=sorted(PLANS), default="screen")
