@@ -28,7 +28,15 @@ architecture.
 
 * High-stakes decisions without a human in the loop.
 * Any claim that VSS generalises to domains outside those it was trained on.
-  Synthetic results do **not** establish real-world generalisation.
+  Synthetic results do **not** establish real-world generalisation, and are now
+  actively disconfirmed as a proxy: the synthetic tie coexisted with a 24-point
+  real-data deficit (CLINC150).
+* **Replacing a plain classifier on high-cardinality intent tasks.** On
+  CLINC150 (151 classes) a tuned plain classifier reaches 0.915 against VSS's
+  0.675. On this evidence a plain baseline is the better choice for that shape
+  of problem.
+* Unfamiliar-input detection. `ABSTAIN` is a confidence threshold, not an OOD
+  alarm — see limitation 5.
 * Free-form generation. VSS answers only the question types it is given
   (`choice`, `noul`, `score`) over declared options.
 
@@ -66,17 +74,47 @@ run manifest. See `docs/benchmark_report.md` for the validated comparisons and
 `docs/claims.md` for the claim-by-claim status. Headline results are **not**
 final: the release is a research preview, and the limitations below are binding.
 
+### Where VSS stands against a plain classifier
+
+Convergence-matched, each system at the learning rate its own screen selected,
+validation-only checkpoint selection, **one seed**:
+
+| dataset | VSS | plain classifier | outcome |
+|---|---:|---:|---|
+| Banking77 (77 classes) | **0.895** | 0.870 | VSS leads 2.5 pts, 1.25× faster — *provisional* |
+| CLINC150 (151 classes) | 0.675 | **0.915** | **plain wins by 24 pts** |
+| synthetic (matched exposure) | 0.870 | 0.868 | tie |
+
+Read this table honestly rather than selectively:
+
+* **VSS is not better overall.** It leads on one dataset by a margin it cannot
+  yet defend at one seed, and loses badly on the other.
+* **The CLINC150 loss is the important number.** VSS peaks at epoch 1 there and
+  then degrades, so this is a structural weakness at high label cardinality, not
+  a training-budget artefact.
+* **Synthetic accuracy does not predict real-data accuracy.** The synthetic tie
+  coexists with a 24-point real loss. Nothing in the synthetic benchmark
+  forecasts either real outcome.
+* **VSS's real-data numbers are floors**, not ceilings: its best checkpoint lands
+  on the final epoch with the budget exhausted in both cases.
+
 ## Limitations
 
-1. **One seed for the synthetic study.** No credible variance estimate exists;
-   differences under ~2 accuracy points are not meaningful.
-2. **Real-data comparisons are not settled.** They are step-matched but not
-   convergence-matched, and CLINC150 required a per-dataset learning-rate
-   screen that has not yet been completed for every architecture.
+1. **One seed for every reported result.** No credible variance estimate exists;
+   differences under ~2 accuracy points are not meaningful. The Banking77 lead
+   over the plain baseline sits inside that threshold and is therefore recorded
+   as provisional rather than as a win.
+2. **VSS loses to a plain classifier on CLINC150 by 24 points** (0.675 vs
+   0.915, convergence-matched, one seed). It peaks at epoch 1 and degrades, so
+   this is a limitation of the architecture at 151 classes and not of tuning.
+   Do not deploy VSS in place of a plain classifier on high-cardinality
+   intent tasks on this evidence.
 3. **Single-label classification only.** No multi-label intents.
 4. **Train/eval option-schema mismatch.** Training presents 15 options per
    example; evaluation ranks the full label set. This is intentional but is a
-   distribution shift, and it is where the plain baseline failed on CLINC150.
+   distribution shift, and it is where the plain baseline previously failed on
+   CLINC150 — that failure was a protocol bug, since fixed, not an inherent
+   property of the baseline.
 5. **`ABSTAIN` is not an out-of-distribution detector.** This was measured, not
    assumed. `benchmarks/convergence/ood_probe.py` scored the quick-start
    checkpoint on 320 in-distribution, 320 word-scrambled and 8 foreign-topic
