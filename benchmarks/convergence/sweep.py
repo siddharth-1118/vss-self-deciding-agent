@@ -128,6 +128,13 @@ def build_run(run: Run):
     cfg.early_stop_patience = PATIENCE
     cfg.early_stop_min_delta = MIN_DELTA
     cfg.min_epochs = MIN_EPOCHS
+    # PARITY: VSS takes `header_only_choice` from its model config (true in
+    # vss-prototype-clinc-slot-ho-qmask.yaml). The plain baseline used to take
+    # it from the question object, which the real-data loader never sets -- so
+    # the sweep silently compared VSS (header-only + full-inventory CE) against
+    # plain (full option text + masked CE). That is not the same task, and it is
+    # what made plain appear to collapse on CLINC150. Match it here.
+    cfg.header_only_choice = True
     labels = pc.build_label_inventory(train_ex, with_abstain=True)
     labels = sorted(set(labels) | set(pc.build_label_inventory(val_ex[:VAL_SLICE],
                                                               with_abstain=False)))

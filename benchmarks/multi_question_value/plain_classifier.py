@@ -114,7 +114,7 @@ class PlainClassifier(nn.Module):
         seqs = []
         for state, q in pairs:
             req = q.as_request()
-            if getattr(q, "header_only_choice", False):
+            if _header_only(q, self.cfg):
                 # same canonical token stream VSS consumes (option text is
                 # stripped by the VSS model's own forward — see vss_model.py)
                 req = {**req, "header_only_choice": True}
@@ -167,19 +167,39 @@ def _row_target(q, label_to_idx: dict[str, int], bins: int) -> dict:
     return {"score": float(q.answer), "min": q.min or 0.0, "max": q.max or 10.0}
 
 
+def _header_only(q: Any, cfg: Any = None) -> bool:
+    """Serialize this choice block WITHOUT its option text?
+
+    VSS takes this from its MODEL config (`vss_model.py` reads
+    `config.header_only_choice`). The plain baseline historically took it from
+    the question object alone, so the two systems silently disagreed whenever
+    the loader did not set the flag -- the convergence sweep therefore compared
+    VSS (header-only, full-inventory CE) against plain (full option text,
+    masked CE), which is not the same task.
+
+    Measured on banking77 validation with one fixed checkpoint:
+    `header_only=True` -> 0.8900 accuracy, `False` -> 0.0750.
+
+    Config wins; the question flag stays as a fallback for legacy callers.
+    """
+    return (bool(getattr(cfg, "header_only_choice", False))
+            or bool(getattr(q, "header_only_choice", False)))
+
+
 def _batch_loss(
     out: dict[str, torch.Tensor],
     pairs: list[tuple[dict, dict]],
     label_to_idx: dict[str, int],
     bins: int,
     device: str,
+    header_only: bool = False,
 ) -> torch.Tensor:
     """Masked multi-task loss: CE over declared options (+ABSTAIN), BCE,
     Huber + ordinal (identical to VSS's score_losses)."""
     losses: list[torch.Tensor] = []
     for i, (state, q) in enumerate(pairs):
         if q.type == "choice":
-            if getattr(q, "header_only_choice", False):
+            if header_only or getattr(q, "header_only_choice", False):
                 # Full-inventory CE over the entire head (the U1 ablation's
                 # proven-strong plain-head recipe), matching the eval-time
                 # softmax over the row's declared options.  Do NOT restrict
@@ -245,7 +265,7 @@ def train_plain(
         for ex in train_examples:
             for q in ex.questions:
                 req = q.as_request()
-                if getattr(q, "header_only_choice", False):
+                if _header_only(q, cfg):
                     req = {**req, "header_only_choice": True}
                 texts.append(serialize_example(ex.state, [req]))
         tok.fit(texts[:20000])
@@ -315,7 +335,8 @@ def train_plain(
             for chunk in batches(valid_rows, cfg.batch_size):
                 x, _ = model.encode_rows(chunk, device)
                 out = model(x)
-                loss = _batch_loss(out, chunk, label_to_idx, bins, device)
+                loss = _batch_loss(out, chunk, label_to_idx, bins, device,
+                                 header_only=bool(getattr(cfg, 'header_only_choice', False)))
                 tot += float(loss) * len(chunk)
                 n += len(chunk)
                 for i, (_state, q) in enumerate(chunk):
@@ -399,7 +420,8 @@ def train_plain(
                 continue
             x, _ = model.encode_rows(chunk, device)
             out = model(x)
-            loss = _batch_loss(out, chunk, label_to_idx, bins, device)
+            loss = _batch_loss(out, chunk, label_to_idx, bins, device,
+                                 header_only=bool(getattr(cfg, 'header_only_choice', False)))
             opt.zero_grad(set_to_none=True)
             loss.backward()
             gn = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.clip_grad_norm)

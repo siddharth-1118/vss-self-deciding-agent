@@ -17,8 +17,9 @@ accuracy claim is **Provisional** or **Withdrawn**. See
 |---|---|
 | Engineering invariants (permutation invariance, question isolation, run isolation, schema validation) | **Supported** |
 | Synthetic convergence + tie vs baseline | **Provisional** (1 seed) |
-| Banking77 VSS 0.870 vs plain 0.820 | **Provisional** (step-matched, not convergence-matched) |
-| CLINC150 comparison | **Withdrawn** (plain baseline collapsed; LR mis-transfer) |
+| Banking77 VSS 0.870 vs plain 0.820 | **Void** — re-run pending; the plain arm trained a different serialization than VSS (D26) |
+| CLINC150 comparison | **Void** — same reason; re-run pending |
+| Legacy plain checkpoints | **Supported** — reproduce at 0.9400 test accuracy (D26, resolved) |
 | "Plain beats VSS in 35/35 cells" | **Withdrawn** |
 | Latency advantage vs batched baseline | **Provisional** (single contended session) |
 | Selective prediction / risk-coverage | **Provisional** (synthetic only) |
@@ -264,26 +265,44 @@ rate selected on a different dataset. The comparison is **void**: a baseline at
 0.195 versus a tuned model at 0.575 is not a ranking. Do not cite
 "VSS 0.700 vs plain 0.000" as an architectural result.
 
-### D26. The pre-audit plain checkpoints do not reproduce their logged metrics — UNSUPPORTED provenance
-Re-evaluating the historical plain checkpoints with the current code, the saved
-`vocab.json`, and the current label mapping
-(`benchmarks/multi_question_value/diag_plain_clinc.py`) gives:
+### D26. ~~The pre-audit plain checkpoints do not reproduce their logged metrics~~ — RESOLVED, checkpoints are sound
+**This claim was wrong and is withdrawn.** The checkpoints were always fine; the
+*measurement* was wrong.
 
-| checkpoint | logged | re-measured |
-|---|---:|---:|
-| `mqv-plain-banking77-s13/best.pt` (epoch 6) | val 0.5206 | val **5.4961**, acc **0.075** |
-| `mqv-plain-clinc150-s13/best.pt` (epoch 3) | val 0.395 | val **8.6164**, acc **0.000** |
-| `mqv-plain-clinc150-s13_maskedce_v1/best.pt` (epoch 0) | — | val 4.6605, acc 0.010 |
+Root cause, identified with evidence: `header_only_choice` was applied
+differently to the two systems. VSS reads it from its **model config**
+(`vss_model.py`); the plain baseline read it from the **question object**. The
+real-data loader (`sweep.load_splits` → `vss.data.schema.load_jsonl`) builds
+`AnsweredQuestion`, which has no such field (`extra="forbid"`), so the flag was
+always absent for plain there. The flag changes both the serialized text (option
+text stripped or not) *and* the plain head's training loss (full-inventory CE vs
+masked CE over each row's declared options).
 
-Both load with **zero missing and zero unexpected tensors**, so this is not a
-shape mismatch, and using the checkpoint's own saved tokenizer does not fix it.
+With ONE fixed `mqv-plain-banking77-s13` checkpoint on **identical** validation
+data, changing only that flag:
 
-Consequence: **any claim that leans on "plain reached 0.8867 at ~1988 steps" is
-unsupported** and has been removed from the Banking77 argument in
-`docs/benchmark_report.md`. The most likely cause is an inconsistent
-label-index mapping between the training run and the evaluation path, but that
-has not been confirmed. Until it is, the historical plain checkpoints are not
-usable as a convergence reference for either real dataset.
+| `header_only_choice` | choice accuracy |
+|---|---:|
+| `True` (as trained; as `dataset.load_real` sets it) | **0.8900** |
+| `False` (as my diagnostic set it) | 0.0750 |
+
+Re-measured through the authoritative `load_plain()` path:
+
+| split | accuracy |
+|---|---:|
+| banking77 validation[:200] | 0.8900 |
+| banking77 test[:200] | **0.9400** |
+| banking77 train[:200] | 1.0000 (15 declared options — memorised) |
+
+Label-index mapping was verified **identical** between `final.pt`'s
+`label_to_idx` and the recomputed sorted union, and a regression test now proves
+a known example maps to the same class index in training and inference.
+
+**Consequences.** The legacy checkpoints are usable, and "plain reached 0.8867
+on Banking77" is back on the record. More importantly, the plain arm of every
+real-data convergence run was training a *different task* than VSS (masked CE +
+full option text vs header-only + full-inventory CE). Those real-data
+comparisons are void and are being re-run; see D25.
 
 ### D21. At matched data exposure VSS and the plain classifier are tied on synthetic — DEMONSTRATED (1 seed)
 Converged, early-stopped, identical schedule implementation and LR selection

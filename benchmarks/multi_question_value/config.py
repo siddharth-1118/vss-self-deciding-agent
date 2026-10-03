@@ -31,6 +31,14 @@ class PlainConfig:
     # systems get an identical schedule implementation and identical stopping
     # rules (docs/convergence_audit.md finding 2)
     warmup_frac: float | None = 0.10
+    # Serialize choice blocks WITHOUT their option text and use full-inventory
+    # CE over the whole label set. This mirrors VSS, which takes the same flag
+    # from its model config (vss_model.py). Leaving it False trains the plain
+    # head with masked CE over each row's declared options, which is a DIFFERENT
+    # task from evaluation (train declares 15 options, test ranks all 151) and
+    # collapses: on banking77 one fixed checkpoint scores 0.8900 with this True
+    # and 0.0750 with it False, on identical validation data.
+    header_only_choice: bool = False
     epochs: int = 8
     batch_size: int = 32
     max_steps: int | None = None  # global step budget (step-matching)
