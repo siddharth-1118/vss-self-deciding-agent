@@ -129,10 +129,41 @@ label set, before any architectural conclusion can be drawn.
 ## 5. Learning-rate screen (per dataset, validation only)
 
 Applying one global LR to every dataset was a real defect. Each (system,
-dataset) pair is now screened on its own validation split with an identical
-step budget for both architectures. Results are in
-`benchmarks/convergence/tables.md` under the `*-screen` runs; see
-`benchmarks/convergence/selected_lrs.json` for the winners.
+dataset) pair is screened on its own validation split with an identical step
+budget (600 steps) for both architectures, 5 learning rates spanning
+3e-5 … 3e-3, seed 13. **The test split is never consulted.** Accuracy is
+reported at the epoch the run *selected* (lowest validation loss), not the best
+epoch by accuracy — taking the max across epochs would apply a second,
+inconsistent selection rule to the validation set.
+
+Rendered by `python benchmarks/convergence/lr_table.py`.
+
+### Plain baseline (complete, both optima bracketed)
+
+| dataset | 3e-5 | 1e-4 | 3e-4 | 1e-3 | 3e-3 | selected |
+|---|---:|---:|---:|---:|---:|---|
+| Banking77 | 0.655 | 0.775 | **0.880** | 0.845 | 0.795 | **3e-4** |
+| CLINC150 | 0.335 | 0.625 | 0.790 | **0.815** | 0.775 | **1e-3** |
+
+Validation loss at those points: Banking77 0.5120, CLINC150 0.5672. Both winners
+are **interior** optima — each beats both grid neighbours — so the optimum is
+bracketed rather than pinned to the edge of the grid. That was the specific
+failure mode of the earlier single-LR sweep, where the best point sat on the
+grid boundary and the optimum was therefore unknown.
+
+**The CLINC150 collapse is resolved.** Under the corrected protocol the plain
+baseline reaches 0.790–0.815 choice accuracy where the `header_only_choice`
+mismatch produced 0.000. This is the single most important consequence of the
+audit: the earlier "VSS 0.700 vs plain 0.000" comparison was not merely
+imprecise, it was measuring a baseline trained on the wrong task.
+
+### VSS (screen in progress)
+
+VSS banking77 at 3e-5 reaches 0.135 (validation loss 4.4825), far below the
+plain baseline at the same learning rate — expected, since 3e-5 is near the
+bottom of VSS's useful range. **No VSS-versus-plain comparison is stated until
+the VSS half completes**, because tuning one architecture and not the other
+would be exactly the fairness failure this section exists to correct.
 
 ## 6. Latency
 
