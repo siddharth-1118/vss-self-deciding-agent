@@ -138,19 +138,47 @@ failing with a stack trace.
 python benchmarks/convergence/sweep.py --plan lr_screen_real --list
 python benchmarks/convergence/sweep.py --plan lr_screen_real --only clinc150
 
-# step-matched final runs
-python benchmarks/convergence/sweep.py --plan real
+# render the screen from the run JSONs (accuracy at the selected checkpoint)
+python benchmarks/convergence/lr_table.py
+
+# convergence-matched final runs at the per-dataset screened LRs
+python benchmarks/convergence/sweep.py --plan real_final --seeds 13 --steps 2000
+python benchmarks/convergence/sweep.py --plan real_final --seeds 7 21 --steps 2000
 
 # regenerate the tables from the run JSONs (never hand-edit them)
 python benchmarks/convergence/analyze.py --out benchmarks/convergence/tables.md
 ```
 
+`--plan real` still exists but applies **one LR per system to every dataset** —
+the policy this audit identified as a defect. Use `--plan real_final`, which
+reads each `(dataset, system)` LR back out of the screen run files, so the value
+a run uses is always traceable to the trial that justified it.
+
 ### Per-dataset learning rates — required, not optional
 
-`selected_lrs.json` records the LR chosen **per (system, dataset)** on that
-dataset's validation split. A single global LR is a known defect: 3e-4 was
-selected on synthetic and applied to CLINC150, where the plain baseline
-collapsed to 0.000 accuracy. See `docs/release_readiness.md`.
+A single global LR is a known defect: 3e-4 was selected on synthetic and applied
+to CLINC150, where the plain baseline collapsed to 0.000 accuracy. The grid must
+also **bracket** the optimum — the first screen put plain's best point on the top
+grid edge, which meant the optimum was unknown rather than found. The current
+grid (3e-5 … 3e-3) brackets all four optima as interior points.
+
+Current selections (seed 13, validation loss only):
+
+| dataset | plain | VSS |
+|---|---|---|
+| Banking77 | 3e-4 | 3e-4 |
+| CLINC150 | 1e-3 | 3e-4 |
+
+### Out-of-distribution probe
+
+```bash
+python benchmarks/convergence/ood_probe.py --model runs/prototype/final \
+    --out benchmarks/convergence/results/ood_probe_synthetic.json
+```
+
+Measures whether the abstain head detects unfamiliar input or merely reports a
+fixed prior. It currently shows the latter (0.103 in-distribution vs 0.106
+word-scrambled vs 0.000 foreign-topic) — see `docs/model_card.md` limitation 5.
 
 ### Run isolation
 
@@ -183,18 +211,26 @@ output is the signature.
 # 1. tests
 python -m pytest -q
 
-# 2. per-dataset LR screen on validation only
+# 2. per-dataset LR screen on validation only (20 runs)
 python benchmarks/convergence/sweep.py --plan lr_screen_real
+python benchmarks/convergence/lr_table.py
 
-# 3. final multi-seed runs at the selected LRs
-python benchmarks/convergence/sweep.py --plan release
+# 3. convergence-matched runs at the selected LRs, 2000 steps
+python benchmarks/convergence/sweep.py --plan real_final --seeds 13 7 21 --steps 2000
 
 # 4. regenerate every table from run JSONs
 python benchmarks/convergence/analyze.py --out benchmarks/convergence/tables.md
 
-# 5. confirm each run's provenance
+# 5. OOD abstention probe
+python benchmarks/convergence/ood_probe.py --model runs/prototype/final
+
+# 6. confirm each run's provenance
 cat runs/convergence/<run>/manifest.json
 ```
 
 Each run's `manifest.json` carries `config_hash`, `git.commit`, `git.dirty`,
-split sizes, `params`, `best_checkpoint`, `elapsed_seconds`, and `status`.
+split sizes, `params`, `best_checkpoint`, `elapsed_seconds`, and an explicit
+`status` of `done` or `failed` — an interrupted run can never read as completed.
+
+Runs are resumable and independently restartable: re-invoke the same command and
+completed runs are left alone while an interrupted one resumes from `last.pt`.

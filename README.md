@@ -94,13 +94,25 @@ Full environment, dataset preparation, tuning and evaluation commands:
 
 ## Release status
 
-**Research preview (v0.1.0).** The software works end to end and the engineering
-invariants are tested, but the accuracy evidence is **provisional**: every
-reported result uses a **single seed**, the Banking77 comparison is step-matched
-but not convergence-matched, the CLINC150 comparison is **withdrawn** (the plain
-baseline fails the 15-option-train → 151-option-eval transfer at every learning
-rate tried), and some legacy baseline checkpoints do not reproduce their logged
-metrics.
+**Research preview (v0.1.0).** The software works end to end, the training
+protocol is tuned and converged, and the engineering invariants are tested. It is
+held back from release by one thing: **every reported result uses a single
+seed.**
+
+VSS has **not** been shown to beat a plain classifier. Measured against a tuned,
+converged baseline at per-dataset learning rates:
+
+| dataset | VSS | plain | outcome |
+|---|---:|---:|---|
+| Banking77 (77 classes) | **0.895** | 0.870 | VSS +2.5 pts, 1.25× faster — *provisional*, inside single-seed noise |
+| CLINC150 (151 classes) | 0.675 | **0.915** | **the plain baseline wins by 24 points** |
+
+If you are choosing a model for a high-cardinality intent task, the honest
+recommendation from this evidence is the plain classifier.
+
+Two further measured limitations: VSS's best checkpoint lands on the final epoch
+in both real runs (its numbers are floors, not ceilings), and `ABSTAIN` is a
+confidence threshold rather than an out-of-distribution detector.
 
 Gates, evidence and unresolved blockers:
 [`docs/release_readiness.md`](docs/release_readiness.md).
