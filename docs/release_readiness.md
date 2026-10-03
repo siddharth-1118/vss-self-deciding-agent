@@ -34,15 +34,17 @@ requires is **not complete**.
 
 | Requirement | Status |
 |---|---|
-| Per-dataset learning rates | **INCOMPLETE** — one global LR (3e-4, screened on synthetic) was applied everywhere. On CLINC150 that made the plain baseline collapse to 0.000 accuracy. A per-dataset screen (`--plan lr_screen_real`) now exists; CLINC150/VSS is complete, CLINC150/plain is in progress. |
+| Per-dataset learning rates | **INCOMPLETE** — one global LR (3e-4, screened on synthetic) was applied everywhere, and on CLINC150 that left the plain baseline near chance. A per-dataset screen (`--plan lr_screen_real`) now exists and CLINC150 is done for both systems, but plain's best LR sits at the **edge** of the screened grid (0.195 at 1e-3, rising monotonically), so its optimum is still not located; 3e-3 has been added to close the bracket. Banking77 has not been screened. |
 | Warmup / decay / premature zero | Fixed (audit findings 2 and 5); warmup capped at 10% of the budget, step 0 no longer a no-op, and a spent budget is reported as budget exhaustion rather than an early stop |
 | Gradient flow, clipping, weight decay | Verified — 75 parameter tensors, 0 with `None`/all-zero gradients |
 | Checkpoint selection | Validation loss only; test split never read during training |
 | Early stopping | Shared implementation, same patience/delta/min-epochs for both systems |
 
-**Why FAIL:** a baseline that collapsed was reported as a comparison. Until the
-plain CLINC150 arm is tuned and re-run, any real-data ranking is unsupported —
-in either direction.
+**Why FAIL:** a baseline that was never tuned at its own optimum was reported as a
+comparison. Plain CLINC150 improves monotonically across the whole screened grid
+(0.000 → 0.000 → 0.120 → 0.195 at 3e-5 → 1e-3) with the best point at the grid
+edge, so its optimum is unlocated. Until the baseline is bracketed and re-run,
+any real-data ranking is unsupported — in either direction.
 
 ## Gate C — Evaluation integrity: **PROVISIONAL**
 
@@ -51,7 +53,7 @@ in either direction.
 | Test isolation from selection | **Verified** — test is never read for LR, threshold, or stopping decisions |
 | Per-seed reporting | **FAILING** — every result is a **single seed**. No variance estimate exists |
 | Metric definitions | Documented; validation *loss* explicitly excluded from cross-system comparison |
-| Macro-F1 | Implemented (`vss.eval.metrics.f1_scores`) but **not yet reported** for the convergence runs |
+| Macro-F1 | Implemented and **reported** for the verified smoke run (0.9928 on synthetic); **not yet reported** for the real-data convergence runs |
 | Reproducibility of new runs | Each run carries a manifest with config hash, git commit, dirty flag, splits, params |
 | **Reproducibility of legacy metrics** | **FAILING** — see below |
 
@@ -82,11 +84,13 @@ Verified end to end on this machine:
 | Requirement | Evidence |
 |---|---|
 | Install | `pip install -e ".[dev]"` |
-| Generate data | `python scripts/prepare_data.py --out data/generated` → 2400/480 |
-| Train from scratch | `python scripts/train.py ... --out runs/my-run` → converged (eval 0.936 → 0.271, choice 0.813 → 0.991) |
-| Load in a fresh process | `VSS.from_pretrained(...)` |
-| Inference | `examples/basic.py`, `vss decide` |
-| REST API | `/health` 200, `/v1/decide` 200, malformed → 422 |
+| Generate data | `python scripts/prepare_data.py --out /tmp/vss_verify` → train 2400 / eval 480 |
+| Train from scratch | `python scripts/train.py ... --out runs/smoke_verify` → **status `done`**, elapsed 1212 s, eval 1.4240 → **0.2096**, choice 0.703 → **0.9969**, `best.pt` recorded |
+| Reproduce from its manifest | `runs/smoke_verify/manifest.json`: config hash `e0967919b7bc941e`, git commit, `dirty`, splits `{train: 2400, eval: 480, test_used: false}`, params, best checkpoint |
+| Load in a fresh process | `python examples/basic.py runs/smoke_verify/final` → full typed answer set |
+| Evaluate | `python scripts/evaluate.py --model runs/smoke_verify/final --data /tmp/vss_verify/eval.jsonl` → choice accuracy **0.99375**, **macro-F1 0.9928**, ECE **0.0064**, AUROC 0.9989, score mean relative error 0.0413 |
+| Run isolation in practice | A second `scripts/train.py` into `runs/smoke_verify` exits **2** with `run directory ... is owned by live pid ...; refusing to write concurrently` |
+| REST API | `/health` 200 with a real boolean, `/v1/decide` 200, malformed → 422 |
 | Schema validation | `extra="forbid"`; unknown question type, empty option list, inverted score range, wrong answer type all → `ValidationError` |
 | Malformed / degenerate input | Empty state, empty message, 50k-char input, single-option choice all handled; 19 tests in `tests/test_api_robustness.py` |
 | Question isolation | Adding a question leaves an existing answer unchanged (test) |
@@ -130,6 +134,7 @@ domain.
 | | |
 |---|---|
 | Tests | 118 passed, 0 failed (`python -m pytest -q`) |
+| Verified smoke run | `runs/smoke_verify`: status `done`, 1212 s, choice 0.9969 val, 0.99375 test accuracy, macro-F1 0.9928, ECE 0.0064 |
 | Environment | Windows 10, Python 3.11.9, torch 2.14.0+cpu, CPU-only, fp32 |
 | Seeds | **1** on every reported result |
 | Runs with manifests | all convergence runs + smoke run |
@@ -139,19 +144,22 @@ domain.
 
 ## Unresolved blockers
 
-1. **Plain CLINC150 must be re-run under a protocol that matches the evaluation
-   schema.** It reaches chance at both 3e-4 and 3e-5, so this is the
-   15-option-train → 151-option-eval transfer, not a learning-rate choice. Until
-   it trains sanely there is no valid CLINC150 comparison in either direction.
-2. **The legacy plain checkpoints must be explained** (Gate C). Until their
+1. **Plain CLINC150 must be tuned to a bracketed optimum and re-run.** Its
+   accuracy rises monotonically to the edge of the screened grid, so the
+   LR optimum is unlocated; and it may additionally need a training protocol
+   that matches the 151-option evaluation schema. Until then there is no valid
+   CLINC150 comparison in either direction.
+2. **Banking77 still needs its per-dataset LR screen** for both systems, so that
+   the Banking77 comparison is not another one-LR-for-every-two-datasets result.
+3. **The legacy plain checkpoints must be explained** (Gate C). Until their
    logged metrics are reproducible, no real-data convergence reference exists.
-3. **Banking77 must be run convergence-matched** (~2000 steps for both systems).
-4. **Multi-seed evaluation is missing.** 3 seeds per configuration is required
+4. **Banking77 must be run convergence-matched** (~2000 steps for both systems).
+5. **Multi-seed evaluation is missing.** 3 seeds per configuration is required
    before any ranking claim; currently 1.
-5. **Macro-F1, OOD metrics and risk-coverage on real data are not reported.**
-6. **A fresh-clone installation and quick-start run has not been executed end to
-   end** on a clean environment — everything above ran in the development
-   checkout.
+6. **Macro-F1, OOD metrics and risk-coverage on real data are not reported**
+   (they are reported for the verified synthetic smoke run only).
+7. **A fresh-clone installation has not been executed** on a clean environment —
+   the quick-start chain was verified in the development checkout.
 
 ## Why research preview rather than release
 

@@ -91,12 +91,27 @@ A per-dataset LR screen was run to find out why (`--plan lr_screen_real`):
 | VSS | 3e-5 | 5.3050 | 0.015 | 2.1 |
 | VSS | 1e-4 | 4.5223 | 0.305 | 3.4 |
 | VSS | 3e-4 | **2.8791** | 0.575 | 2.7 |
-| plain | 3e-5 | 5.2541 | **0.000** | 12.5–15.7 |
+| plain | 3e-5 | 5.2541 | 0.000 | 12.5–15.7 |
+| plain | 1e-4 | 5.2100 | 0.000 | 8.5–9.6 |
+| plain | 3e-4 | 4.1142 | 0.120 | — |
+| plain | 1e-3 | **2.9824** | 0.195 | — |
 
-**The plain baseline fails at 3e-5 as well as 3e-4**, with gradient norms of
-12–15 against a clip threshold of 1.0. So the collapse is **not simply a
-mis-chosen learning rate**: even a 10× lower LR leaves the model at chance on
-151 classes while a freshly initialised model is also at chance.
+All rows are read directly from `benchmarks/convergence/runs/*-screen.json`;
+each was verified against the file rather than transcribed by hand.
+
+**Correction to an earlier reading of this screen.** The first three plain runs
+(3e-5, 1e-4, 3e-4) suggested the collapse was *not* an LR effect, since two
+lower LRs were also at chance. The completed screen refutes that: plain improves
+**monotonically** across the whole grid — 0.000 / 0.000 / 0.120 / 0.195
+accuracy — and the best point sits at the **top edge** of the grid, not at an
+interior optimum. The screen therefore did not bracket the plain baseline's
+optimum; it is simply under-tuned, and 3e-3 has been added to the grid to close
+the bracket.
+
+So both hypotheses remain live and are **not separated by this experiment**:
+the 15-option-train → 151-option-eval transfer, and an LR chosen on a different
+dataset. Either way the baseline is mis-tuned relative to VSS (0.195 vs 0.575),
+and no ranking claim is licensed.
 
 The substantive explanation is the **train/eval option-schema gap**: every
 training example declares 15 options (gold + 14 distractors), so the choice head
@@ -105,10 +120,11 @@ ranks all **151** labels. VSS's option-slot projection appears to transfer to
 unseen option sets; the plain classifier's pooled choice head does not, at this
 budget.
 
-**This comparison is still withdrawn.** A baseline that reaches chance while a
-tuned model reaches 0.575 is not yet a credible ranking — the baseline needs a
-protocol that trains it across the full label set (or an explicit train/test
-schema match) before any architectural conclusion can be drawn.
+**This comparison is still withdrawn.** A baseline that reaches 0.195 while a
+tuned model reaches 0.575 — with the baseline's best LR still at the edge of the
+screened grid — is a mis-tuned arm, not a credible ranking. The baseline needs
+(a) a bracketing LR search and (b) a protocol that trains it across the full
+label set, before any architectural conclusion can be drawn.
 
 ## 5. Learning-rate screen (per dataset, validation only)
 
@@ -157,7 +173,27 @@ Adding an unrelated question does not change an existing answer: pinned by
 and by the synthetic interference measurement (paired decision flips, Q=8:
 +8.13 pts when co-asking, i.e. co-asking helps rather than hurts).
 
-## 9. Limitations that constrain every number above
+## 9. Verified end-to-end reference run (synthetic quickstart)
+
+Reproduced from a clean data directory with the documented commands. This is the
+one run in this repository whose full chain — data → train → manifest → load →
+evaluate → example → REST — has been executed end to end and verified.
+
+| | |
+|---|---|
+| run directory | `runs/smoke_verify` |
+| manifest status | `done`, elapsed 1212 s |
+| config hash | `e0967919b7bc941e` |
+| splits | train 2400 / eval 480, `test_used: false` |
+| validation (held out) | eval loss 1.4240 → **0.2096**, choice 0.703 → **0.9969** |
+| test evaluation | choice accuracy **0.99375**, **macro-F1 0.9928**, ECE **0.0064**, AUROC 0.9989 |
+| score head | mean relative error 0.0413 |
+
+This is a **single seed** on generated synthetic data, and it does not
+substitute for the real-data runs above; it is included because it is the one
+fully reproducible artifact here.
+
+## 10. Limitations that constrain every number above
 
 1. **One seed** on every result reported here. No variance estimate; differences
    under ~2 points are not meaningful.

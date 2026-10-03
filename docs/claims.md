@@ -241,17 +241,27 @@ The CLINC150 pair trained at the same budget. VSS behaved normally (0.36 → 0.6
 accuracy fell 0.085 → 0.020 → **0.000**, below the 0.0067 random baseline for
 151 classes.
 
-A per-dataset LR screen was run to diagnose it. Plain **also reaches 0.000 at
-3e-5** (val 5.2541, gradient norms 12–15 against a clip of 1.0), and a freshly
-initialised model is at chance too. So this is **not simply a mis-chosen
-learning rate**: the baseline cannot discriminate 151 labels when every training
-example declares only 15 options (gold + 14 distractors). The plain choice head
-only ever learns within a 15-way subset and does not transfer to the full label
-set; VSS's option-slot projection does.
+A per-dataset LR screen was run to diagnose it:
 
-The comparison is still **void**, for the opposite reason to the one originally
-suspected: a baseline at chance is not a credible ranking until it has been
-trained under a protocol that matches the evaluation schema. Do not cite
+| plain CLINC150 LR | best val loss | choice acc |
+|---|---:|---:|
+| 3e-5 | 5.2541 | 0.000 |
+| 1e-4 | 5.2100 | 0.000 |
+| 3e-4 | 4.1142 | 0.120 |
+| 1e-3 | 2.9824 | **0.195** |
+
+The first three runs suggested this was *not* an LR effect (two lower LRs were
+also at chance). **That reading was wrong**: the completed screen shows plain
+improving **monotonically** across the entire grid, with the best value at the
+**top edge** rather than an interior peak. The grid did not bracket the
+baseline's optimum, so the plain arm is under-tuned and 3e-3 was added to close
+the bracket.
+
+Two hypotheses therefore remain live and are **not separated** by this
+experiment: (a) the 15-option-train → 151-option-eval transfer, since the plain
+choice head only ever discriminates within a 15-way subset, and (b) a learning
+rate selected on a different dataset. The comparison is **void**: a baseline at
+0.195 versus a tuned model at 0.575 is not a ranking. Do not cite
 "VSS 0.700 vs plain 0.000" as an architectural result.
 
 ### D26. The pre-audit plain checkpoints do not reproduce their logged metrics — UNSUPPORTED provenance

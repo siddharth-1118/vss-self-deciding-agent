@@ -251,7 +251,12 @@ def plan_real() -> list[Run]:
 # where the plain baseline collapsed to 0.000 accuracy. Each (system, dataset)
 # pair is screened on its own validation split, with an identical budget for both
 # architectures so neither is advantaged.
-LR_GRID_REAL = (3e-5, 1e-4, 3e-4, 1e-3)
+#
+# The grid must BRACKET the optimum. The first CLINC150 screen showed plain
+# improving monotonically all the way to the top of the grid
+# (0.000 / 0.000 / 0.120 / 0.195 accuracy at 3e-5 / 1e-4 / 3e-4 / 1e-3), so 1e-3
+# was an edge, not a peak; 3e-3 was added to close the bracket.
+LR_GRID_REAL = (3e-5, 1e-4, 3e-4, 1e-3, 3e-3)
 STEP_BUDGET_SCREEN_REAL = 600
 
 
