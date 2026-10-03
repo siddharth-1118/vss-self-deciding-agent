@@ -17,8 +17,8 @@ accuracy claim is **Provisional** or **Withdrawn**. See
 |---|---|
 | Engineering invariants (permutation invariance, question isolation, run isolation, schema validation) | **Supported** |
 | Synthetic convergence + tie vs baseline | **Provisional** (1 seed) |
-| Banking77 VSS 0.895 vs plain 0.870 | **Provisional** — convergence-matched at per-dataset screened LRs, but 1 seed and VSS not converged (D28) |
-| CLINC150 plain 0.915 vs VSS 0.675 | **Demonstrated (1 seed)** — plain wins by 24 pts; large enough to survive seed noise (D28) |
+| Banking77 VSS 0.8300 vs plain 0.8783 (3 seeds) | **Demonstrated (3 seeds)** — plain ahead 4.8 pts; VSS ~8.5× less stable (D28) |
+| CLINC150 plain 0.915 vs VSS 0.675 | **Demonstrated (1 seed)** — plain ahead 24 pts; awaiting seeds 7/21 (D28) |
 | Legacy plain checkpoints | **Supported** — reproduce at 0.9400 test accuracy (D26, resolved) |
 | "Plain beats VSS in 35/35 cells" | **Withdrawn** |
 | Latency advantage vs batched baseline | **Provisional** (single contended session) |
@@ -338,44 +338,56 @@ real-data convergence run was training a *different task* than VSS (masked CE +
 full option text vs header-only + full-inventory CE). Those real-data
 comparisons are void and are being re-run; see D25.
 
-### D28. Convergence-matched real data: VSS wins Banking77, loses CLINC150 — DEMONSTRATED (1 seed each)
+### D28. Convergence-matched real data: the plain baseline wins both datasets — DEMONSTRATED
 2000-step budget, each system at the learning rate its **own** screen selected
 (Banking77 3e-4 both; CLINC150 plain 1e-3, VSS 3e-4), validation-only checkpoint
-selection, seed 13. Accuracy is read at the selected (lowest-loss) checkpoint, not
-the best epoch by accuracy.
+selection, accuracy read at the selected (lowest-loss) checkpoint. Rendered by
+`python benchmarks/convergence/seed_table.py`.
 
-| dataset | VSS | plain | verdict |
-|---|---:|---:|---|
-| Banking77 | **0.895** (1876 s) | 0.870 (2352 s) | VSS +2.5 pts, 1.25× faster |
-| CLINC150 | 0.675 (1061 s) | **0.915** (1205 s) | plain **+24.0 pts** |
+| dataset | n | VSS | plain | delta |
+|---|---:|---|---|---:|
+| Banking77 | **3** | 0.8300 (sd 0.0650) | **0.8783** (sd 0.0076) | **plain +4.8 pts** |
+| CLINC150 | 1 | 0.6750 | **0.9150** | **plain +24.0 pts** |
 
-**The CLINC150 reversal is the headline.** For three audit cycles the record
-said "VSS 0.700 vs plain 0.000". That comparison was wrong in two compounding
-ways — the plain arm trained a different task (D26) and both arms ran a
-synthetic-derived learning rate at too small a budget. Corrected, the plain
-baseline reaches 0.915 and **beats VSS by 24 points**. VSS peaks on CLINC150 at
-**epoch 1** and then degrades (eval 2.07 → 3.34 by epoch 3), so this is a genuine
-weakness at 151 classes rather than an under-trained artefact; plain's curve was
-still improving when its budget ended.
+**Banking77 reversed under multi-seed, and that is the important part of this
+claim.** At seed 13 VSS scored 0.895 against plain's 0.870 — a nominal 2.5-point
+VSS lead that an earlier revision of this file recorded as a VSS win. Seeds 7
+and 21 show it was **seed luck**:
 
-The Banking77 lead is **not** claimed as a ranking: 2.5 points on a 200-example
-validation slice at one seed is about five examples, and VSS's best checkpoint
-lands on its final epoch with the budget exhausted, so 0.895 is a floor rather
-than a ceiling. It is recorded as promising and unproven.
+| seed | plain | VSS |
+|---|---:|---:|
+| 7 | 0.880 | 0.765 |
+| 13 | 0.870 | 0.895 |
+| 21 | 0.885 | 0.830 |
+| **mean** | **0.8783** | **0.8300** |
+| sd | 0.0076 | 0.0650 |
+
+VSS spans 0.765–0.895 (spread 0.130); plain spans 0.870–0.885 (spread 0.015).
+**VSS is roughly 8.5× less stable run to run**, and its best single seed
+(0.895) exceeds plain's best seed (0.885).
+
+On CLINC150, VSS peaks at **epoch 1** and then degrades (eval 2.07 → 3.34 by
+epoch 3) — a genuine weakness at 151 classes, not an under-trained artefact,
+since plain's curve was still improving at 2000 steps. For three audit cycles
+the record said "VSS 0.700 vs plain 0.000"; that was wrong in two compounding
+ways (the plain arm trained a different task per D26, and both arms ran a
+synthetic-derived LR at too small a budget). Corrected, plain reaches 0.915.
 
 **Consequences.**
 * CLINC150 moves from VOID to **measured, and measured against VSS**. D25 is
   retained above as history because the error it recorded — a broken baseline
   presented as a comparison — is worth not reintroducing.
-* Synthetic accuracy does **not** predict real-data accuracy: the synthetic tie
-  (D21) coexists with a 24-point real loss and a 2.5-point real win. Neither
-  direction transfers. Any argument that builds on synthetic results predicting
-  real ones is unsupported.
-* The honest summary is asymmetric: a single-seed 24-point deficit is a real
-  finding about the architecture; a single-seed 2.5-point lead is not a
-  defensible ranking.
-* **No scaling decision follows from this.** D28 argues against scaling on
-  CLINC150-like label spaces at minimum.
+* **Synthetic accuracy does not predict real-data accuracy.** The synthetic tie
+  (D21) coexists with losses on both real datasets. Nothing in the synthetic
+  benchmark forecasts either real outcome.
+* **No scaling decision follows from this**, and D28 argues *against* scaling.
+* **What this does not show**, kept explicit so the negative is not over-read:
+  VSS reached 0.895 at seed 13, above plain's best seed. The finding is that VSS
+  does not *reliably* reach its own best case — a reliability problem, which is
+  a different and more tractable one than a capability gap.
+* CLINC150 remains single-seed; seeds 7 and 21 are queued. Its 24-point gap is
+  far larger than the ~2-point noise Banking77 exhibited, so a reversal there is
+  unlikely, but it is one seed.
 
 ### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
 **Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the

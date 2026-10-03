@@ -96,23 +96,28 @@ Full environment, dataset preparation, tuning and evaluation commands:
 
 **Research preview (v0.1.0).** The software works end to end, the training
 protocol is tuned and converged, and the engineering invariants are tested. It is
-held back from release by one thing: **every reported result uses a single
-seed.**
+held back from release by one thing: **CLINC150 and the synthetic benchmark are
+still single-seed**, and on the dataset that does have three seeds the plain
+baseline is ahead.
 
-VSS has **not** been shown to beat a plain classifier. Measured against a tuned,
-converged baseline at per-dataset learning rates:
+VSS has **not** been shown to beat a plain classifier — and on the evidence
+available, it loses. Measured against a tuned, converged baseline at per-dataset
+learning rates, validation-selected checkpoints:
 
-| dataset | VSS | plain | outcome |
-|---|---:|---:|---|
-| Banking77 (77 classes) | **0.895** | 0.870 | VSS +2.5 pts, 1.25× faster — *provisional*, inside single-seed noise |
-| CLINC150 (151 classes) | 0.675 | **0.915** | **the plain baseline wins by 24 points** |
+| dataset | n | VSS | plain | outcome |
+|---|---:|---|---|---|
+| Banking77 (77 classes) | 3 | 0.8300 (sd 0.065) | **0.8783** (sd 0.008) | plain +4.8 pts |
+| CLINC150 (151 classes) | 1 | 0.675 | **0.915** | plain +24.0 pts |
 
-If you are choosing a model for a high-cardinality intent task, the honest
-recommendation from this evidence is the plain classifier.
+VSS is also **much less stable across seeds** — 0.765 to 0.895 on Banking77,
+against plain's 0.870 to 0.885. A single-seed run of VSS on Banking77 scored
+0.895, above plain's best seed; at another seed it scored 0.765. If you are
+choosing a model for real-data intent classification, the honest recommendation
+from this evidence is the plain classifier.
 
 Two further measured limitations: VSS's best checkpoint lands on the final epoch
-in both real runs (its numbers are floors, not ceilings), and `ABSTAIN` is a
-confidence threshold rather than an out-of-distribution detector.
+where it is not stopped early (its numbers are floors, not ceilings), and
+`ABSTAIN` is a confidence threshold rather than an out-of-distribution detector.
 
 Gates, evidence and unresolved blockers:
 [`docs/release_readiness.md`](docs/release_readiness.md).

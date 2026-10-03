@@ -31,10 +31,10 @@ architecture.
   Synthetic results do **not** establish real-world generalisation, and are now
   actively disconfirmed as a proxy: the synthetic tie coexisted with a 24-point
   real-data deficit (CLINC150).
-* **Replacing a plain classifier on high-cardinality intent tasks.** On
-  CLINC150 (151 classes) a tuned plain classifier reaches 0.915 against VSS's
-  0.675. On this evidence a plain baseline is the better choice for that shape
-  of problem.
+* **Replacing a plain classifier on real-data intent classification.** On
+  Banking77 across 3 seeds a tuned plain classifier averages 0.878 against VSS's
+  0.830; on CLINC150 it reaches 0.915 against 0.675. On this evidence the plain
+  baseline is the better choice for that shape of problem.
 * Unfamiliar-input detection. `ABSTAIN` is a confidence threshold, not an OOD
   alarm — see limitation 5.
 * Free-form generation. VSS answers only the question types it is given
@@ -77,39 +77,45 @@ final: the release is a research preview, and the limitations below are binding.
 ### Where VSS stands against a plain classifier
 
 Convergence-matched, each system at the learning rate its own screen selected,
-validation-only checkpoint selection, **one seed**:
+validation-only checkpoint selection:
 
-| dataset | VSS | plain classifier | outcome |
-|---|---:|---:|---|
-| Banking77 (77 classes) | **0.895** | 0.870 | VSS leads 2.5 pts, 1.25× faster — *provisional* |
-| CLINC150 (151 classes) | 0.675 | **0.915** | **plain wins by 24 pts** |
-| synthetic (matched exposure) | 0.870 | 0.868 | tie |
+| dataset | n | VSS | plain classifier | outcome |
+|---|---:|---|---|---|
+| Banking77 (77 classes) | 3 | 0.8300 (sd 0.065) | **0.8783** (sd 0.008) | plain +4.8 pts |
+| CLINC150 (151 classes) | 1 | 0.675 | **0.915** | plain +24.0 pts |
+| synthetic (matched exposure) | 1 | 0.870 | 0.868 | tie |
 
 Read this table honestly rather than selectively:
 
-* **VSS is not better overall.** It leads on one dataset by a margin it cannot
-  yet defend at one seed, and loses badly on the other.
-* **The CLINC150 loss is the important number.** VSS peaks at epoch 1 there and
-  then degrades, so this is a structural weakness at high label cardinality, not
-  a training-budget artefact.
-* **Synthetic accuracy does not predict real-data accuracy.** The synthetic tie
-  coexists with a 24-point real loss. Nothing in the synthetic benchmark
-  forecasts either real outcome.
-* **VSS's real-data numbers are floors**, not ceilings: its best checkpoint lands
-  on the final epoch with the budget exhausted in both cases.
+* **On this evidence the plain baseline is better on both real datasets, and VSS
+  is far less reliable run to run** — a 0.130 spread across seeds versus plain's
+  0.015, roughly 8.5× larger.
+* **A single-seed result would have said the opposite on Banking77.** VSS scored
+  0.895 at seed 13 (above plain's best seed, 0.885) and 0.765 at seed 7. The
+  apparent 2.5-point win was seed luck.
+* **CLINC150 is a structural weakness, not a budget artefact.** VSS peaks at
+  epoch 1 and then degrades; plain's curve was still improving at 2000 steps.
+* **Synthetic accuracy does not predict real accuracy.** The synthetic tie
+  coexists with losses on both real datasets.
+* **This is a reliability finding, not a capability verdict.** VSS's best case
+  exceeds plain's best case on Banking77. What fails is reaching that case
+  reliably — a different and more tractable problem than being unable to.
+* **VSS's real-data numbers are floors**, not ceilings: where not stopped early
+  its best checkpoint lands on the final epoch.
 
 ## Limitations
 
-1. **One seed for every reported result.** No credible variance estimate exists;
-   differences under ~2 accuracy points are not meaningful. The Banking77 lead
-   over the plain baseline sits inside that threshold and is therefore recorded
-   as provisional rather than as a win.
-2. **VSS loses to a plain classifier on CLINC150 by 24 points** (0.675 vs
-   0.915, convergence-matched, one seed). It peaks at epoch 1 and degrades, so
-   this is a limitation of the architecture at 151 classes and not of tuning.
-   Do not deploy VSS in place of a plain classifier on high-cardinality
-   intent tasks on this evidence.
-3. **Single-label classification only.** No multi-label intents.
+1. **VSS is not currently competitive with a plain classifier on real data.**
+   Across 3 seeds on Banking77 it averages 0.830 against plain's 0.878, and on
+   CLINC150 it scores 0.675 against 0.915. Choose the plain baseline for
+   real-data intent classification on this evidence.
+2. **VSS's results are unstable across seeds** — 0.765 to 0.895 on Banking77
+   where plain spans 0.870 to 0.885. Any single VSS number, including the best
+   one, should be treated as one draw from a wide distribution rather than as
+   expected performance.
+3. **Three seeds on Banking77, one elsewhere.** CLINC150 and the synthetic
+   benchmark remain single-seed.
+4. **Single-label classification only.** No multi-label intents.
 4. **Train/eval option-schema mismatch.** Training presents 15 options per
    example; evaluation ranks the full label set. This is intentional but is a
    distribution shift, and it is where the plain baseline previously failed on
