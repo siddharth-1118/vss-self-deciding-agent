@@ -32,7 +32,7 @@ drives the verified end-to-end reference run in
 
 | Requirement | Evidence |
 |---|---|
-| Tests pass | `python -m pytest -q` — **118 passed, 0 failed** (see §Evidence) |
+| Tests pass | `python -m pytest -q` — **136 passed, 1 skipped, 0 failed** (see §Evidence) |
 | Data integrity | `train ∩ test = 0` utterances on CLINC150 and Banking77, verified by inspection |
 | Label consistency | choice options enumerated per split; train uses 15 options, eval ranks the full label set — a deliberate, documented shift |
 | Masks | question-mask and padding-mask behaviour covered by `tests/test_question_mask.py` |
@@ -181,7 +181,7 @@ domain.
 
 | | |
 |---|---|
-| Tests | **134 passed**, 1 skipped (opt-in slow OOD test), 0 failed (`python -m pytest -q`) |
+| Tests | **136 passed**, 1 skipped (opt-in slow OOD test), 137 collected, 0 failed (`python -m pytest -q`) |
 | Fresh-clone verification | commit `92e50ca` in an empty directory: deps → data → train (`done`, 1093.52 s) → load → evaluate → example → CLI → REST |
 | Real-data tuning | 20 screen runs + 4 convergence-matched runs; all four LR optima bracketed |
 | Verified smoke run | `runs/smoke_verify`: status `done`, 1212 s, choice 0.9969 val, 0.99375 test accuracy, macro-F1 0.9928, ECE 0.0064 |
