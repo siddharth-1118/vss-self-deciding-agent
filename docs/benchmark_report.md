@@ -50,34 +50,44 @@ VSS ties plain at Q=1–4, plain leads by 3.4–6.9 pts at Q=8–50, and most of
 Q=8–16 deficit is VSS *abstaining* rather than answering wrongly (VSS answers
 98.6% correctly at 87.4% coverage).
 
-## 3. Real data — Banking77 (convergence-matched, single seed)
+## 3. Real data — Banking77 — **the plain baseline wins at 3 seeds**
 
 2000-step budget, each system at the learning rate its own screen selected
-(Banking77: **3e-4 for both**), validation-only checkpoint selection, seed 13.
-One question per real state, so matched steps are also matched presentations.
+(Banking77: **3e-4 for both**), validation-only checkpoint selection, accuracy
+read at the selected (lowest-loss) checkpoint. One question per real state, so
+matched steps are also matched presentations.
 
-| system | steps | epochs | best epoch | early stop | choice acc | wall s |
-|---|---:|---:|---:|---|---:|---:|
-| **VSS** | 2000 | 8 | 7 | budget exhausted | **0.895** | 1876 |
-| plain | 1988 | 7 | 3 | yes (genuine) | 0.870 | 2352 |
+| system | n | per-seed | mean | sd | spread | wall s |
+|---|---:|---|---:|---:|---:|---:|
+| **plain** | 3 | 0.880 / 0.870 / 0.885 | **0.8783** | 0.0076 | 0.015 | 2111 |
+| VSS | 3 | 0.765 / 0.895 / 0.830 | 0.8300 | 0.0650 | 0.130 | 2010 |
 
-**VSS leads by 2.5 points and trains 1.25× faster** (1876 s vs 2352 s) on the
-same hardware, in the same session.
+**The plain baseline leads by 4.8 points on the mean, and VSS is roughly 8.5×
+less stable across seeds** (sd 0.065 vs 0.008; spread 0.130 vs 0.015).
 
-Two caveats, stated rather than buried:
+This reverses what the single-seed result said. At seed 13 VSS scored 0.895
+against plain's 0.870 — a nominal 2.5-point lead — and an earlier draft of this
+report recorded it as a VSS win. Seeds 7 and 21 show that was **seed luck**: VSS
+spans 0.765–0.895 while plain barely moves. This is exactly the failure a single
+seed cannot detect, and it is the reason the multi-seed requirement exists.
 
-* **VSS's best lands on its final epoch** (`early=False`, budget exhausted), so
-  0.895 is a floor, not a ceiling. Plain's 0.870 is a true convergence point.
-* **One seed.** A 2.5-point gap is smaller than the spread typically seen across
-  seeds on a 77-class task, so this is **not** yet a defensible ranking. See §12.
+Two independent observations survive the seed variation:
 
-What the comparison *does* establish, independent of seeds: the previously
-reported Banking77 VSS number (0.76) came from a checkpoint frozen at `lr=0` for
-three of its four epochs. Fixing the step budget moved VSS from 0.645 to 0.895
-(**+25 points**) — an order of magnitude larger than any architectural
-difference measured in this study.
+* VSS reaches its best checkpoint on the **final** epoch when it is not stopped
+  early, and early-stops *earlier* on bad seeds (seed 7 stopped at epoch 2 of a
+  1704-step budget). Its outcome is genuinely seed-dependent, not budget-limited.
+* Plain's runs converge consistently: 0.870 / 0.880 / 0.885, all genuine early
+  stops around epochs 3–4.
 
-## 4. Real data — CLINC150 (convergence-matched, single seed) — **the plain baseline wins**
+What the audit did establish here is about the *protocol*, not the architecture:
+the previously reported VSS Banking77 number (0.76) came from a checkpoint frozen
+at `lr=0` for three of four epochs, and fixing the step budget moved VSS from
+0.645 to as high as 0.895. But the best case is not the expected case — the
+three-seed mean is 0.830.
+
+Rendered by `python benchmarks/convergence/seed_table.py`.
+
+## 4. Real data — CLINC150 — **the plain baseline wins**
 
 2000-step budget, each system at its own screened learning rate (plain **1e-3**,
 VSS **3e-4** — they genuinely disagree here), validation-only selection, seed 13.
@@ -303,15 +313,17 @@ fully reproducible artifact here.
 
 ## 11. Limitations that constrain every number above
 
-1. **One seed** on every result reported here. No variance estimate; differences
-   under ~2 points are not meaningful. This is the binding constraint on §3.
+1. **Three seeds on Banking77, one elsewhere.** Banking77 has a real variance
+   estimate (§3) — sd 0.008 (plain) and 0.065 (VSS). CLINC150 and synthetic are
+   still single-seed, and CLINC150's gap is large enough that one seed is
+   unlikely to hide a reversal, but it remains one seed.
 2. **VSS is not converged on either real dataset.** Its best checkpoint lands on
-   the final epoch with the budget exhausted in both cases, so its real-data
-   numbers are floors, not ceilings. Plain's CLINC150 curve was still improving
-   at 2000 steps.
+   the final epoch when not stopped early, so its numbers are floors, not
+   ceilings — and the early-stop-on-bad-seeds behaviour means the floor is
+   seed-dependent. Plain's CLINC150 curve was still improving at 2000 steps.
 3. **Validation slices are 200 examples** (`sweep.VAL_SLICE`). A 2.5-point
-   difference on n=200 is roughly 5 examples — inside binomial noise at one
-   seed.
+   difference on n=200 is roughly 5 examples, which is exactly why the 2.5-point
+   seed-13 Banking77 gap did not survive three seeds.
 4. **Absolute timings are contended**; only same-session ratios are valid (§6).
 5. **OOD abstention does not work** (§8). Any claim that the model detects
    unfamiliar input is withdrawn.
@@ -328,13 +340,25 @@ fully reproducible artifact here.
 
 | comparison | verdict |
 |---|---|
-| VSS vs plain, Banking77, 2000 steps, seed 13 | VSS +2.5 pts, 1.25× faster. **Provisional** — single seed, VSS not converged. |
-| VSS vs plain, CLINC150, 2000 steps, seed 13 | **plain +24.0 pts.** Reported as found. Single seed, but the gap is far outside noise. |
+| VSS vs plain, Banking77, 2000 steps, **3 seeds** | **plain +4.8 pts** (0.8783 vs 0.8300). VSS also ~8.5× less stable across seeds. |
+| VSS vs plain, CLINC150, 2000 steps, 1 seed | **plain +24.0 pts.** Single seed, but the gap is far outside the seed noise measured on Banking77. |
 | VSS vs plain, synthetic, matched exposure | Tie (§2), one seed. |
-| Synthetic → real generalisation | **No.** §2 and §4 disagree in sign. |
+| Synthetic → real generalisation | **No.** §2 ties while both real datasets go against VSS. |
+| Stability | **plain is stable, VSS is not** — 0.015 vs 0.130 spread on identical settings. |
 
-The honest summary: **VSS wins one real dataset by a margin it cannot yet defend,
-and loses the other by a margin it cannot hide.** A single-seed 24-point deficit
-is a real finding about the architecture at 151 classes; a single-seed 2.5-point
-lead is not a defensible ranking. Treat the Banking77 number as "promising,
+**The honest summary: on this evidence the plain baseline is better on both real
+datasets, and VSS is markedly less reliable run to run.** VSS is not shown to
+beat the baseline anywhere; its only measured advantages remain synthetic —
+a tie at matched exposure, informative selective prediction (D22), and
+single-pass latency against a *batched* baseline (D14).
+
+Two things this does **not** establish, kept explicit so the negative result is
+not over-read:
+
+* It does not prove VSS is a worse *architecture*. Its parameterisation and
+  training path were corrected only recently, and at seed 13 it reached 0.895 —
+  above plain's best seed. The finding is that VSS currently *does not reliably*
+  reach its own best case.
+* CLINC150 is one seed. Banking77's 3-seed result is the stronger evidence, and
+  the remaining CLINC150 seeds are queued. Treat the Banking77 number as "promising,
 unproven" and the CLINC150 number as "established".
