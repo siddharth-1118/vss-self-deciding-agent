@@ -2,22 +2,23 @@
 
 **Decision: RESEARCH PREVIEW.** Not release-ready. All engineering, training and
 scope gates now pass; **Gate C (evaluation integrity) is PROVISIONAL** because
-every result is still a single seed. This is a deliberate, labelled release of
-working software with honest evidence, not a claim that every question is
-settled.
+CLINC150 and the synthetic benchmark are still single-seed. This is a deliberate,
+labelled release of working software with honest evidence, not a claim that every
+question is settled.
 
 **What the evidence now says about the model itself** (convergence-matched,
-per-dataset tuned, validation-selected, seed 13):
+per-dataset tuned, validation-selected):
 
-| dataset | VSS | plain classifier | outcome |
-|---|---:|---:|---|
-| Banking77 (77 classes) | **0.895** | 0.870 | VSS +2.5 pts, 1.25× faster — *provisional*, inside single-seed noise |
-| CLINC150 (151 classes) | 0.675 | **0.915** | **plain wins by 24 pts** — a finding, not a tuning artefact |
+| dataset | n | VSS | plain classifier | outcome |
+|---|---:|---|---|---|
+| Banking77 (77 classes) | 3 | 0.8300 (sd 0.065) | **0.8783** (sd 0.008) | plain +4.8 pts |
+| CLINC150 (151 classes) | 1 | 0.675 | **0.915** | plain +24.0 pts |
 
-This is not a model that has been shown to beat its baseline. It is a model that
-wins one dataset by a margin it cannot yet defend and loses the other badly
-enough that a plain classifier is the better choice for high-cardinality intent
-tasks on this evidence.
+This is not a model that has been shown to beat its baseline. On the evidence
+available **the plain classifier is better on both real datasets**, and VSS is
+roughly 8.5× less stable across seeds (spread 0.130 vs 0.015). A single-seed
+run would have said the opposite on Banking77 — VSS scored 0.895 at seed 13 and
+0.765 at seed 7 — which is precisely why the multi-seed requirement existed.
 
 The model is not scaled. Every result below is at the current ~11M-parameter
 (concretely: **11,164,483** for the benchmark configuration used by the
@@ -65,7 +66,7 @@ the earlier failures are fixed.
 | Requirement | Status |
 |---|---|
 | Test isolation from selection | **Verified** — test is never read for LR, threshold, or stopping decisions |
-| Per-seed reporting | **PARTIAL** — seed 13 complete for all four (system, dataset) pairs; seeds 7 and 21 launched. Still **not 3 seeds** on any configuration |
+| Per-seed reporting | **PARTIAL** — Banking77 has **3 seeds per system** (a real variance estimate). CLINC150 and synthetic remain single-seed. |
 | Metric definitions | Documented; validation *loss* explicitly excluded from cross-system comparison (VSS's contains a calibration BCE and soft-ordinal term the plain loss lacks) |
 | Macro-F1 | Implemented and reported for the verified smoke run (0.9928 synthetic); **not yet reported** for the real-data runs |
 | Reproducibility of new runs | Each run carries a manifest with config hash, git commit, dirty flag, splits, params, pid, timestamps, and explicit `done`/`failed` status |
@@ -92,9 +93,13 @@ class index in training and inference.
 **Consequence:** every real-data comparison made before this fix was void,
 because the plain arm was training a different task. They have been re-run.
 
-**Why still PROVISIONAL:** one seed cannot support a claim that one architecture
-beats another by a few points. The Banking77 gap (2.5 pts) falls inside that
-limit; the CLINC150 gap (24 pts) does not and is reported as a finding.
+**Why still PROVISIONAL:** CLINC150 and the synthetic benchmark rest on one seed
+each. Banking77's three seeds are what overturned the earlier single-seed
+reading, so treating the remaining single-seed numbers as settled would repeat
+the exact error this audit exists to catch.
+
+A measured variance estimate now exists: **sd 0.008 (plain) and 0.065 (VSS) on
+Banking77.**
 
 ## Gate D — Functional completeness: **PASS**
 
@@ -198,34 +203,38 @@ domain.
 |---|---|
 | A — legacy checkpoints / evaluation discrepancy | **RESOLVED.** Root cause: `header_only_choice` was read from the model config by VSS but from the question object by plain, and `AnsweredQuestion` has no such field, so plain silently trained the *full-inventory CE* task while VSS trained the header-only task. Same checkpoint, same data, only that flag: **0.8900 vs 0.0750**. The checkpoints were always sound; the measurement was wrong. Fix + 11 parity tests in `tests/test_plain_header_only_parity.py`. |
 | B — per-dataset LR tuning for both architectures | **DONE.** 20-run screen; all four optima bracketed. |
-| C — fair convergence-matched real-data comparison | **DONE for seed 13** at per-dataset tuned LRs and 2000 steps; **multi-seed in progress** (seeds 7, 21 launched). |
+| C — fair convergence-matched real-data comparison | **DONE** — per-dataset tuned LRs, 2000 steps, **3 seeds on Banking77**, CLINC150 seeds in progress. The result is negative for VSS on both datasets. |
 | D — decision-specific behaviour | **DONE.** Heads, schemas, isolation, permutation, calibration and selective prediction exercised; the OOD-abstention claim was measured and withdrawn (D27). |
 | E — fresh-environment verification | **DONE.** Full documented chain executed in a clean `git clone` at `92e50ca`; see Gate D. |
 
 ## Remaining blockers
 
-1. **Multi-seed evaluation.** Three seeds per configuration is required before
-   any ranking claim. Seed 13 is complete for all four pairs; seeds 7 and 21 are
-   launched and resumable (`--plan real_final --seeds 7 21`). This alone is
-   sufficient to withhold release status.
-2. **Macro-F1, per-class error analysis and risk-coverage on real data are not
+1. **CLINC150 and synthetic are single-seed.** Banking77's three seeds are what
+   overturned the earlier reading, so these cannot be treated as settled. The
+   queued runs are resumable: `python benchmarks/convergence/sweep.py --plan
+   real_final --seeds 7 21 --steps 2000`.
+2. **VSS is unstable across seeds** (0.765–0.895 on Banking77) and the cause is
+   undiagnosed. It early-stops on bad seeds and peaks on its final epoch on good
+   ones, which points at the stopping rule interacting with the LR schedule
+   rather than at data or capacity. Until that is understood, no single VSS
+   number should be quoted as expected performance.
+3. **Macro-F1, per-class error analysis and risk-coverage on real data are not
    reported** — they exist only for the verified synthetic run.
-3. **VSS is not converged on either real dataset.** Its best checkpoint lands on
-   the final epoch with the budget exhausted in both cases, so its numbers are
-   floors. Longer budgets could move them either way.
 4. **OOD abstention does not work** (D27). A product limitation rather than a
    release blocker, but binding on any out-of-domain deployment — an explicit
    novelty gate is needed before one is attempted.
-5. **VSS loses to plain on CLINC150 by 24 points** and this is not diagnosed
-   beyond "peaks at epoch 1 then degrades". Whether the cause is the choice
-   head, the shared-state encoding at 151 classes, or the loss weighting is
-   untested. Until it is, the architecture should not be scaled.
+5. **VSS is behind the plain baseline on both real datasets** and the
+   architectural cause is not identified. The CLINC150 symptom (peak at epoch 1,
+   then degrade) is documented but not explained. This is the main research
+   question the project now faces, and it argues firmly against scaling.
 
 ## Why research preview rather than release
 
 The engineering is sound, the software works end to end from a clean checkout,
-training is now properly tuned and converged, and one long-standing measurement
-defect was root-caused rather than worked around. What is missing is
-*evidentiary*: every result is a single seed, and the model does not beat its
-baseline — on CLINC150 it loses badly. Shipping as a research preview with those
-facts stated is honest; shipping as "release-ready" would not be.
+training is properly tuned and converged, and a long-standing measurement defect
+was root-caused rather than worked around. What is missing is *evidentiary*, and
+what the evidence says is negative: the plain baseline is better on both real
+datasets and VSS is far less stable run to run. Shipping this as "release-ready"
+would imply the model is fit to deploy as a decision model; it is not, on this
+evidence. Shipping it as a research preview with the comparison reported as
+found is.
