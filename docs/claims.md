@@ -17,13 +17,14 @@ accuracy claim is **Provisional** or **Withdrawn**. See
 |---|---|
 | Engineering invariants (permutation invariance, question isolation, run isolation, schema validation) | **Supported** |
 | Synthetic convergence + tie vs baseline | **Provisional** (1 seed) |
-| Banking77 VSS 0.870 vs plain 0.820 | **Void** — re-run pending; the plain arm trained a different serialization than VSS (D26) |
-| CLINC150 comparison | **Void** — same reason; re-run pending |
+| Banking77 VSS 0.895 vs plain 0.870 | **Provisional** — convergence-matched at per-dataset screened LRs, but 1 seed and VSS not converged (D28) |
+| CLINC150 plain 0.915 vs VSS 0.675 | **Demonstrated (1 seed)** — plain wins by 24 pts; large enough to survive seed noise (D28) |
 | Legacy plain checkpoints | **Supported** — reproduce at 0.9400 test accuracy (D26, resolved) |
 | "Plain beats VSS in 35/35 cells" | **Withdrawn** |
 | Latency advantage vs batched baseline | **Provisional** (single contended session) |
 | Selective prediction / risk-coverage | **Provisional** (synthetic only) |
-| Real-world generalisation from synthetic results | **Unsupported** (never claimed to hold; explicitly disclaimed) |
+| Real-world generalisation from synthetic results | **Unsupported** — and now actively **disconfirmed**: the synthetic tie and the CLINC150 loss disagree in sign (D28) |
+| OOD / abstention detects unfamiliar input | **Withdrawn** — measured false; behaves like a ~10% prior (D27) |
 
 ---
 
@@ -336,6 +337,45 @@ on Banking77" is back on the record. More importantly, the plain arm of every
 real-data convergence run was training a *different task* than VSS (masked CE +
 full option text vs header-only + full-inventory CE). Those real-data
 comparisons are void and are being re-run; see D25.
+
+### D28. Convergence-matched real data: VSS wins Banking77, loses CLINC150 — DEMONSTRATED (1 seed each)
+2000-step budget, each system at the learning rate its **own** screen selected
+(Banking77 3e-4 both; CLINC150 plain 1e-3, VSS 3e-4), validation-only checkpoint
+selection, seed 13. Accuracy is read at the selected (lowest-loss) checkpoint, not
+the best epoch by accuracy.
+
+| dataset | VSS | plain | verdict |
+|---|---:|---:|---|
+| Banking77 | **0.895** (1876 s) | 0.870 (2352 s) | VSS +2.5 pts, 1.25× faster |
+| CLINC150 | 0.675 (1061 s) | **0.915** (1205 s) | plain **+24.0 pts** |
+
+**The CLINC150 reversal is the headline.** For three audit cycles the record
+said "VSS 0.700 vs plain 0.000". That comparison was wrong in two compounding
+ways — the plain arm trained a different task (D26) and both arms ran a
+synthetic-derived learning rate at too small a budget. Corrected, the plain
+baseline reaches 0.915 and **beats VSS by 24 points**. VSS peaks on CLINC150 at
+**epoch 1** and then degrades (eval 2.07 → 3.34 by epoch 3), so this is a genuine
+weakness at 151 classes rather than an under-trained artefact; plain's curve was
+still improving when its budget ended.
+
+The Banking77 lead is **not** claimed as a ranking: 2.5 points on a 200-example
+validation slice at one seed is about five examples, and VSS's best checkpoint
+lands on its final epoch with the budget exhausted, so 0.895 is a floor rather
+than a ceiling. It is recorded as promising and unproven.
+
+**Consequences.**
+* CLINC150 moves from VOID to **measured, and measured against VSS**. D25 is
+  retained above as history because the error it recorded — a broken baseline
+  presented as a comparison — is worth not reintroducing.
+* Synthetic accuracy does **not** predict real-data accuracy: the synthetic tie
+  (D21) coexists with a 24-point real loss and a 2.5-point real win. Neither
+  direction transfers. Any argument that builds on synthetic results predicting
+  real ones is unsupported.
+* The honest summary is asymmetric: a single-seed 24-point deficit is a real
+  finding about the architecture; a single-seed 2.5-point lead is not a
+  defensible ranking.
+* **No scaling decision follows from this.** D28 argues against scaling on
+  CLINC150-like label spaces at minimum.
 
 ### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
 **Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the
