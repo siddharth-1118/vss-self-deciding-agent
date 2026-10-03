@@ -71,14 +71,42 @@ pip install -e ".[onnx]"       # ONNX export
 
 ## Quickstart (end-to-end, ~6 min on CPU)
 
+Trained checkpoints are build artifacts and are **not committed** (`runs/` is in
+`.gitignore`), so train one first. Each run must write to its own `--out`
+directory; the trainer refuses to start if another live process owns it, and
+writes a `manifest.json` recording the config hash, git revision, splits and an
+explicit `done` / `failed` status.
+
 ```bash
 python scripts/prepare_data.py --out data/generated          # synthetic data
 python scripts/train.py --config configs/vss-prototype.yaml \
-    --train data/generated/train.jsonl --eval data/generated/eval.jsonl
+    --train data/generated/train.jsonl --eval data/generated/eval.jsonl \
+    --out runs/prototype
 python scripts/evaluate.py --model runs/prototype/final \
     --data data/generated/eval.jsonl --latency --sweep-thresholds
 python examples/basic.py
 ```
+
+Run the tests with `python -m pytest -q`.
+
+Full environment, dataset preparation, tuning and evaluation commands:
+[`docs/training_and_reproduction.md`](docs/training_and_reproduction.md).
+
+## Release status
+
+**Research preview (v0.1.0).** The software works end to end and the engineering
+invariants are tested, but the accuracy evidence is **provisional**: every
+reported result uses a **single seed**, the Banking77 comparison is step-matched
+but not convergence-matched, the CLINC150 comparison is **withdrawn** (the plain
+baseline fails the 15-option-train → 151-option-eval transfer at every learning
+rate tried), and some legacy baseline checkpoints do not reproduce their logged
+metrics.
+
+Gates, evidence and unresolved blockers:
+[`docs/release_readiness.md`](docs/release_readiness.md).
+Claim-by-claim status: [`docs/claims.md`](docs/claims.md).
+Validated comparisons: [`docs/benchmark_report.md`](docs/benchmark_report.md).
+Model card: [`docs/model_card.md`](docs/model_card.md).
 
 ## REST API
 

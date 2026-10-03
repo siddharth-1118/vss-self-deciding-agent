@@ -1,9 +1,28 @@
 # VSS Claims Ledger
 
-Epistemic tiers: **Demonstrated** (measured here, reproducible from committed
-artifacts), **Plausible** (consistent with evidence but not isolated), **Unknown**
-(no evidence either way). Every claim names its evidence. All real-data results
-except where noted are SINGLE training seed unless stated.
+Epistemic tiers: **Supported** (measured here, reproducible from artifacts in
+this repository), **Provisional** (measured, but one seed / not
+convergence-matched / not isolation-checked), **Withdrawn** (was claimed, no
+longer supported), **Unsupported** (claimed without evidence). Every claim names
+its evidence. All real-data results are SINGLE training seed unless stated.
+
+## Release status of this ledger
+
+This release is a **research preview**. The only claims at *Supported* are the
+engineering invariants and the synthetic single-seed results. Every real-data
+accuracy claim is **Provisional** or **Withdrawn**. See
+`docs/release_readiness.md` for the gate-by-gate decision.
+
+| Claim group | Status |
+|---|---|
+| Engineering invariants (permutation invariance, question isolation, run isolation, schema validation) | **Supported** |
+| Synthetic convergence + tie vs baseline | **Provisional** (1 seed) |
+| Banking77 VSS 0.870 vs plain 0.820 | **Provisional** (step-matched, not convergence-matched) |
+| CLINC150 comparison | **Withdrawn** (plain baseline collapsed; LR mis-transfer) |
+| "Plain beats VSS in 35/35 cells" | **Withdrawn** |
+| Latency advantage vs batched baseline | **Provisional** (single contended session) |
+| Selective prediction / risk-coverage | **Provisional** (synthetic only) |
+| Real-world generalisation from synthetic results | **Unsupported** (never claimed to hold; explicitly disclaimed) |
 
 ---
 
@@ -222,12 +241,39 @@ The CLINC150 pair trained at the same budget. VSS behaved normally (0.36 → 0.6
 accuracy fell 0.085 → 0.020 → **0.000**, below the 0.0067 random baseline for
 151 classes.
 
-The likely cause is that the sweep applies **one** learning rate — 3e-4, chosen by
-the screen on the *synthetic* dataset (`benchmarks/convergence/selected_lrs.json`)
-— to every dataset, and 3e-4 was never screened against a 151-class output.
-This measures learning-rate mis-transfer, not architecture. Both CLINC150 run
-JSONs are kept for the record; the comparison is **void** and is listed as the
-top next experiment (per-dataset LR screen) in `docs/convergence_report.md` §12.
+A per-dataset LR screen was run to diagnose it. Plain **also reaches 0.000 at
+3e-5** (val 5.2541, gradient norms 12–15 against a clip of 1.0), and a freshly
+initialised model is at chance too. So this is **not simply a mis-chosen
+learning rate**: the baseline cannot discriminate 151 labels when every training
+example declares only 15 options (gold + 14 distractors). The plain choice head
+only ever learns within a 15-way subset and does not transfer to the full label
+set; VSS's option-slot projection does.
+
+The comparison is still **void**, for the opposite reason to the one originally
+suspected: a baseline at chance is not a credible ranking until it has been
+trained under a protocol that matches the evaluation schema. Do not cite
+"VSS 0.700 vs plain 0.000" as an architectural result.
+
+### D26. The pre-audit plain checkpoints do not reproduce their logged metrics — UNSUPPORTED provenance
+Re-evaluating the historical plain checkpoints with the current code, the saved
+`vocab.json`, and the current label mapping
+(`benchmarks/multi_question_value/diag_plain_clinc.py`) gives:
+
+| checkpoint | logged | re-measured |
+|---|---:|---:|
+| `mqv-plain-banking77-s13/best.pt` (epoch 6) | val 0.5206 | val **5.4961**, acc **0.075** |
+| `mqv-plain-clinc150-s13/best.pt` (epoch 3) | val 0.395 | val **8.6164**, acc **0.000** |
+| `mqv-plain-clinc150-s13_maskedce_v1/best.pt` (epoch 0) | — | val 4.6605, acc 0.010 |
+
+Both load with **zero missing and zero unexpected tensors**, so this is not a
+shape mismatch, and using the checkpoint's own saved tokenizer does not fix it.
+
+Consequence: **any claim that leans on "plain reached 0.8867 at ~1988 steps" is
+unsupported** and has been removed from the Banking77 argument in
+`docs/benchmark_report.md`. The most likely cause is an inconsistent
+label-index mapping between the training run and the evaluation path, but that
+has not been confirmed. Until it is, the historical plain checkpoints are not
+usable as a convergence reference for either real dataset.
 
 ### D21. At matched data exposure VSS and the plain classifier are tied on synthetic — DEMONSTRATED (1 seed)
 Converged, early-stopped, identical schedule implementation and LR selection

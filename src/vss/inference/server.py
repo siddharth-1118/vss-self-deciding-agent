@@ -29,8 +29,11 @@ def load_model(path: str) -> VSS:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "model_loaded": str(_model is not None)}
+def health() -> dict[str, Any]:
+    # `model_loaded` must be a real bool: annotating the return as
+    # dict[str, str] coerced it to the string "True", which breaks any client
+    # that checks the flag for truthiness of the JSON type.
+    return {"status": "ok", "model_loaded": _model is not None}
 
 
 @app.post("/v1/decide")

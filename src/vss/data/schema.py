@@ -121,7 +121,10 @@ class DecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     state: dict[str, Any] | list[Any]
-    questions: list[QuestionIn]
+    # At least one question: a decision model asked zero questions cannot build a
+    # question row set, and previously reached the encoder and died with an opaque
+    # tensor-size RuntimeError instead of a client-facing validation error.
+    questions: list[QuestionIn] = Field(..., min_length=1)
 
 
 class TrainingExample(BaseModel):

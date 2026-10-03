@@ -169,6 +169,11 @@ def decide_once(
 
     if not isinstance(model, VSSModel):
         raise TypeError("model must be a VSSModel")
+    # Defensive: an empty question list cannot produce a question row set and
+    # previously surfaced as an opaque torch tensor-size RuntimeError. Reject it
+    # as the client error it is. (DecisionRequest also enforces min_length=1.)
+    if not questions:
+        raise ValueError("questions must contain at least one question")
     specs = [QuestionSpec.from_dict(q) for q in questions]
     model.eval()
     with torch.no_grad():

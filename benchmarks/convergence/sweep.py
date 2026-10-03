@@ -26,6 +26,8 @@ sys.path.insert(0, str(REPO / "benchmarks" / "multi_question_value"))
 
 import torch  # noqa: E402
 
+import manifest  # noqa: E402  (run identity + collision isolation)
+
 torch.set_num_threads(6)
 
 LOG_DIR = HERE / "runs"
@@ -145,26 +147,50 @@ def run_once(run: Run) -> dict:
         if d.get("done"):
             return d
 
+    run_dir = CKPT_ROOT / run.name
+    # Fail loudly rather than corrupting a checkpoint another process is writing.
+    manifest.claim_run_dir(run_dir)
     t0 = time.time()
     built = build_run(run)
     cfg, model, trainer, train_ex, val_ex, cal_ex, params = built[:7]
     print(f"[{run.name}] train={len(train_ex)} val={len(val_ex)} "
           f"cal={len(cal_ex)} params={params:,}", flush=True)
-    ckpt_dir = (cfg.training.checkpoint_dir if run.system == "vss"
-                else str(CKPT_ROOT / run.name))
+    ckpt_dir = str(run_dir)
     if run.system == "vss":
-        resume = str(Path(ckpt_dir) / "last.pt")
-        resume = resume if Path(resume).exists() else None
-        if resume:
-            print(f"[{run.name}] resuming from {resume}", flush=True)
-        res = trainer.fit(resume_from=resume)
-        best = res["best_loss"]
-    else:
-        import plain_classifier as pc
-        labels = built[7]
-        res = pc.train_plain(model, train_ex, val_ex[:VAL_SLICE], cfg, run.seed,
-                             ckpt_dir)
-        best = res["best_val"]
+        cfg.training.checkpoint_dir = ckpt_dir
+    man = manifest.start_manifest(
+        run_dir, run_id=run.name, system=run.system, dataset=run.dataset,
+        splits={"train": len(train_ex), "validation_selection": len(val_ex[:VAL_SLICE]),
+                "calibration": len(cal_ex),
+                "test_used": False},
+        model_cfg=(cfg.model if run.system == "vss" else
+                   {"kind": "PlainClassifier", "n_labels": len(built[7])
+                    if run.system == "plain" else None,
+                    "hidden_size": getattr(cfg, "hidden_size", None),
+                    "layers": getattr(cfg, "layers", None)}),
+        training_cfg=(cfg.training if run.system == "vss" else cfg),
+        params=params, repo=REPO,
+        extra={"criteria": {"patience": PATIENCE, "min_delta": MIN_DELTA,
+                            "min_epochs": MIN_EPOCHS, "val_slice": VAL_SLICE},
+               "checkpoint_dir": ckpt_dir})
+    try:
+        if run.system == "vss":
+            resume = str(Path(ckpt_dir) / "last.pt")
+            resume = resume if Path(resume).exists() else None
+            if resume:
+                print(f"[{run.name}] resuming from {resume}", flush=True)
+            res = trainer.fit(resume_from=resume)
+            best = res["best_loss"]
+        else:
+            import plain_classifier as pc
+            res = pc.train_plain(model, train_ex, val_ex[:VAL_SLICE], cfg, run.seed,
+                                 ckpt_dir)
+            best = res["best_val"]
+    except Exception as exc:
+        manifest.finish_manifest(run_dir, man, status="failed",
+                                 error=f"{type(exc).__name__}: {exc}")
+        manifest.release_run_dir(run_dir)
+        raise
     rec = {
         **asdict(run),
         "params": params,
@@ -182,9 +208,16 @@ def run_once(run: Run) -> dict:
         "criteria": {"patience": PATIENCE, "min_delta": MIN_DELTA,
                      "min_epochs": MIN_EPOCHS, "val_slice": VAL_SLICE},
         "checkpoint_dir": ckpt_dir,
+        "manifest": str(run_dir / manifest.MANIFEST_FILE),
+        "config_hash": man["config_hash"],
+        "git_commit": man["git"]["commit"],
         "done": True,
     }
-    log_path.write_text(json.dumps(rec, indent=1), encoding="utf-8")
+    manifest.write_json_atomic(log_path, rec)
+    manifest.finish_manifest(
+        run_dir, man, status="done", result=rec,
+        best_checkpoint=str(Path(ckpt_dir) / "best.pt"))
+    manifest.release_run_dir(run_dir)
     print(f"[{run.name}] done best={best:.4f} epochs={rec['epochs_run']} "
           f"early={rec['stopped_early']} steps={rec['steps']} "
           f"{rec['wall_seconds']}s", flush=True)
@@ -199,7 +232,6 @@ def plan_screen() -> list[Run]:
 
 
 def plan_final() -> list[Run]:
-    """3 seeds at the LR chosen on validation by the screen (synthetic)."""
     lrs = json.loads((HERE / "selected_lrs.json").read_text(encoding="utf-8"))
     return [Run(system, "synthetic", seed, float(lrs[system]), EPOCH_CAP_SYNTH,
                 STEP_BUDGET_SYNTH)
@@ -214,7 +246,25 @@ def plan_real() -> list[Run]:
             for ds in ("clinc150", "banking77") for system in ("vss", "plain")]
 
 
-PLANS = {"screen": plan_screen, "final": plan_final, "real": plan_real}
+# Per-dataset LR screen. The one-LR-for-everything policy was a real defect:
+# 3e-4 was selected on synthetic (small label space) and then applied to CLINC150,
+# where the plain baseline collapsed to 0.000 accuracy. Each (system, dataset)
+# pair is screened on its own validation split, with an identical budget for both
+# architectures so neither is advantaged.
+LR_GRID_REAL = (3e-5, 1e-4, 3e-4, 1e-3)
+STEP_BUDGET_SCREEN_REAL = 600
+
+
+def plan_lr_screen_real(dataset: str) -> list[Run]:
+    """LR screen for one real dataset, both architectures, same budget each."""
+    return [Run(system, dataset, 13, lr, EPOCH_CAP_REAL, STEP_BUDGET_SCREEN_REAL,
+                tag="screen")
+            for system in ("vss", "plain") for lr in LR_GRID_REAL]
+
+
+PLANS = {"screen": plan_screen, "final": plan_final, "real": plan_real,
+         "lr_screen_real": lambda: plan_lr_screen_real("banking77")
+                               + plan_lr_screen_real("clinc150")}
 
 
 def main() -> int:

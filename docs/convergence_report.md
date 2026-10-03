@@ -214,22 +214,22 @@ alone account for **+22.5 accuracy points** of VSS's Banking77 accuracy.
 
 **But this does not settle the real-data ranking, for two honest reasons:**
 
-1. **Neither system was given enough budget to converge at 1200 steps.** The
-   pre-audit checkpoints in `runs/mqv-vss-banking77-s13` and
-   `runs/mqv-plain-banking77-s13` were trained to **epoch 6 / ~1988 steps**, and
-   the plain one reached val loss 0.5206 and 0.8867 test accuracy there. At 1200
-   steps plain reaches only 0.7662. So the matched comparison above is
-   step-matched, **not** convergence-matched for plain.
-2. **VSS was still improving when the budget ended.** Its best accuracy is at
-   epoch 4, the last epoch, with `lr` already annealed to 0 — so 0.870 is a
-   floor, not a ceiling.
+1. **Neither system was given enough budget to converge at 1200 steps.** VSS's
+   best accuracy is at epoch 4, the last epoch, with `lr` already annealed to 0
+   — so 0.870 is a floor, not a ceiling.
+2. **The pre-audit checkpoints do not reproduce.** The historical plain
+   Banking77 checkpoint (`runs/mqv-plain-banking77-s13/best.pt`, logged val
+   0.5206) re-evaluates to val **5.4961** / accuracy **0.075** under the current
+   code, tokenizer and label mapping; the ClINC150 one re-evaluates to val
+   **8.6164** / **0.000** against its logged 0.395. Both load with zero missing
+   or unexpected tensors. This is unexplained (see D26 in `docs/claims.md`), so
+   the older "plain 0.8867 at ~1988 steps" figure **cannot be used as the
+   convergence reference** and is not relied on above.
 
-Net: the earlier "plain wins" reading on Banking77 (VSS 0.76 vs plain 0.8867) is
-**not confirmed** by the only like-for-like comparison available, and the
-matched-budget comparison now favours VSS. Deciding the real-data ranking needs
-both systems trained to genuine convergence at a common budget — which at
-~1.6 s/step for plain and ~0.8 s/step for VSS is roughly another 1.5–2 h per arm
-on this box.
+Net: the earlier "plain wins" reading on Banking77 is **not confirmed** by the
+only like-for-like comparison available, and the matched-budget comparison
+favours VSS. Deciding the real-data ranking needs both systems trained to genuine
+convergence at a common budget — roughly 1.5–2 h per arm on this box.
 
 ## 8. CLINC150 — the plain arm collapsed, so this comparison is void
 
@@ -314,13 +314,14 @@ already received on synthetic) before any comparison is drawn.
 - VSS's multi-question efficiency claim survives (2.7× vs *batched* plain).
 - VSS's selective prediction is demonstrably useful where plain's is not.
 - On **Banking77 at a matched 1200-step budget**, VSS leads plain 0.870 vs 0.820
-  at 2.1× lower wall-clock (§7). The previously reported Banking77 ranking
-  (plain 0.8867 vs VSS 0.76) is **not reproduced** and is withdrawn.
+  at 2.1× lower wall-clock (§7). The previously reported Banking77 ranking is
+  **not reproduced** and is withdrawn.
 
 **Not licensed:**
 
-- A real-data **ranking** claim. §7 is step-matched but not convergence-matched;
-  plain's own 1988-step checkpoint reached 0.8867, above VSS's 0.870.
+- A real-data **ranking** claim. §7 is step-matched but not convergence-matched,
+  and the historical checkpoints that would provide the convergence reference do
+  not reproduce their logged metrics (D26).
 - Any CLINC150 claim at all. §8's plain arm collapsed to 0.000 accuracy at an
   LR selected on synthetic; the comparison measures LR mis-transfer, not
   architecture.
