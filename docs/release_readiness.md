@@ -6,7 +6,11 @@ working software with honest evidence, not a claim that every question is
 settled.
 
 The model is not scaled. Every result below is at the current ~11M-parameter
-size. No parameter increase is proposed or attempted.
+(concretely: **11,164,483** for the benchmark configuration used by the
+convergence sweep, and **13,655,364** for `configs/vss-prototype.yaml`, which
+drives the verified end-to-end reference run in
+`docs/benchmark_report.md` §10). Both are recorded in
+`docs/current_state_audit.md`. No parameter increase is proposed or attempted.
 
 ---
 
@@ -79,7 +83,27 @@ architecture beats another by a few points.
 
 ## Gate D — Functional completeness: **PASS**
 
-Verified end to end on this machine:
+### Verified in a genuinely clean checkout (Blocker E)
+
+The dev checkout was not accepted as evidence. A fresh `git clone` of the
+repository at commit `92e50ca` into an empty directory, with **no `runs/`** and
+no shared state, was taken through the entire documented workflow:
+
+| step | command | outcome |
+|---|---|---|
+| dependencies | import every declared dep from the clone's own `src` | numpy, torch, pydantic, yaml, safetensors, tqdm, fastapi all resolve |
+| data prep | `python scripts/prepare_data.py` | train 2400 / eval 480, both `OK` |
+| train from scratch | `python scripts/train.py --config configs/vss-prototype.yaml --train data/generated/train.jsonl --eval data/generated/eval.jsonl --out runs/clean_clone` | **status `done`**, 1093.52 s, eval 1.1107 → **0.2110**, choice 0.772 → **1.000** |
+| manifest | `runs/clean_clone/manifest.json` | commit `92e50ca`, dirty flag, config hash `cefdddcfec8f115c`, params 13,655,364, pid, start/end timestamps, `splits {train: 2400, eval: 480, test_used: false}`, best checkpoint present |
+| load in a fresh process | `python scripts/evaluate.py --model runs/clean_clone/final --data data/generated/eval.jsonl` | score mean relative error **0.0418** |
+| example | `python examples/basic.py runs/clean_clone/final` | `billing` @ 0.9975, `noul` 0 @ 0.9998, `score` 1.017 @ 0.962 |
+| CLI | `python -m vss.cli --help` | train, decide, serve, evaluate, validate, generate |
+| REST | `TestClient` against the clone's own `src` | `/health` 200 `model_loaded: true` (boolean), `/v1/decide` 200, empty questions / bad type / unknown field all **422** |
+
+`scripts/train.py` was verified byte-identical to the clone's own commit, so the
+training run exercised committed code rather than a locally patched copy.
+
+### Verified end to end on the development machine
 
 | Requirement | Evidence |
 |---|---|
@@ -110,6 +134,15 @@ Verified end to end on this machine:
    died with a stack trace. It now accepts an explicit path / `$VSS_MODEL` and
    exits with the exact training command to run.
 
+One further behavioural defect was found and fixed during Blocker E, recorded as
+D27: **the abstain head does not detect out-of-distribution input.** Measured on
+648 states, word-scrambling moved the abstain rate by 0.003 (0.1031 → 0.1062)
+and fluent off-domain text drew **zero** abstentions at *higher* confidence
+(0.9422) than in-distribution text (0.8904). The claim is withdrawn and the
+behaviour is documented as a limitation in the model card, the benchmark report
+and the example itself, and pinned by
+`tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`.
+
 ## Gate E — Claim integrity: **PASS**
 
 Every public claim in `docs/claims.md` carries one of **Supported /
@@ -133,7 +166,8 @@ domain.
 
 | | |
 |---|---|
-| Tests | 118 passed, 0 failed (`python -m pytest -q`) |
+| Tests | **134 passed**, 1 skipped (opt-in slow OOD test), 0 failed (`python -m pytest -q`) |
+| Fresh-clone verification | commit `92e50ca` in an empty directory: deps → data → train (`done`, 1093.52 s) → load → evaluate → example → CLI → REST |
 | Verified smoke run | `runs/smoke_verify`: status `done`, 1212 s, choice 0.9969 val, 0.99375 test accuracy, macro-F1 0.9928, ECE 0.0064 |
 | Environment | Windows 10, Python 3.11.9, torch 2.14.0+cpu, CPU-only, fp32 |
 | Seeds | **1** on every reported result |
@@ -142,29 +176,37 @@ domain.
 | Provisional | Banking77 0.870 vs 0.820 (step-matched, not convergence-matched) |
 | Withdrawn | CLINC150 comparison; "plain wins 35/35"; all pre-audit real-data order-invariance / interference / selective-accuracy figures |
 
-## Unresolved blockers
+## Blocker status
 
-1. **Plain CLINC150 must be tuned to a bracketed optimum and re-run.** Its
-   accuracy rises monotonically to the edge of the screened grid, so the
-   LR optimum is unlocated; and it may additionally need a training protocol
-   that matches the 151-option evaluation schema. Until then there is no valid
-   CLINC150 comparison in either direction.
-2. **Banking77 still needs its per-dataset LR screen** for both systems, so that
-   the Banking77 comparison is not another one-LR-for-every-two-datasets result.
-3. **The legacy plain checkpoints must be explained** (Gate C). Until their
-   logged metrics are reproducible, no real-data convergence reference exists.
-4. **Banking77 must be run convergence-matched** (~2000 steps for both systems).
-5. **Multi-seed evaluation is missing.** 3 seeds per configuration is required
-   before any ranking claim; currently 1.
-6. **Macro-F1, OOD metrics and risk-coverage on real data are not reported**
-   (they are reported for the verified synthetic smoke run only).
-7. **A fresh-clone installation has not been executed** on a clean environment —
-   the quick-start chain was verified in the development checkout.
+| blocker | status |
+|---|---|
+| A — legacy checkpoints / evaluation discrepancy | **RESOLVED.** Root cause: `header_only_choice` was read from the model config by VSS but from the question object by plain, and `AnsweredQuestion` has no such field, so plain silently trained the *full-inventory CE* task while VSS trained the header-only task. Same checkpoint, same data, only that flag: **0.8900 vs 0.0750**. The checkpoints were always sound; the measurement was wrong. Fix + 11 parity tests in `tests/test_plain_header_only_parity.py`. |
+| B — per-dataset LR tuning for both architectures | **IN PROGRESS.** Per-dataset screens launched for both systems on Banking77 and CLINC150 (20 runs, 600 steps, validation-only selection). |
+| C — fair convergence-matched real-data comparison | **BLOCKED on B.** The corrected plain CLINC150 arm now trains (0.655 choice accuracy at epoch 1, versus 0.000 under the mismatched protocol), but no ranking is claimed until the screen picks per-dataset LRs and the runs are repeated across seeds. |
+| D — decision-specific behaviour | **DONE.** Heads, schemas, isolation, permutation, calibration and selective prediction exercised; the OOD-abstention claim was measured and withdrawn (D27). |
+| E — fresh-environment verification | **DONE.** Full documented chain executed in a clean `git clone` at `92e50ca`; see Gate D. |
+
+## Remaining blockers
+
+1. **Multi-seed evaluation is missing.** Three seeds per configuration is required
+   before any ranking claim; every result here is one seed. This alone is
+   sufficient to withhold release status regardless of the others.
+2. **Real-data comparisons are not convergence-matched.** Banking77 and CLINC150
+   have been run at a fixed step budget, not to convergence for both systems.
+3. **CLINC150's LR optimum was not bracketed by the earlier grid** (accuracy rose
+   monotonically to the edge). The wider screen in progress addresses this, and
+   the corrected protocol already trains rather than collapsing.
+4. **Macro-F1, per-class error analysis and risk-coverage on real data are not
+   reported** — they exist only for the verified synthetic run.
+5. **OOD abstention does not work** (D27). This is a product limitation rather
+   than a release blocker, but it is binding on any out-of-domain deployment and
+   needs an explicit novelty gate before one is attempted.
 
 ## Why research preview rather than release
 
-The engineering is sound and the software works end to end. What is missing is
-*evidentiary*, not functional: a mis-tuned baseline produced a false real-data
-comparison, and one seed cannot separate two architectures that differ by a few
-points. Shipping as a research preview with those two facts stated is honest;
+The engineering is sound and the software works end to end, including from a
+clean checkout. What is missing is *evidentiary*, not functional: every
+real-data number is a single seed, the real-data comparisons are step-matched
+rather than convergence-matched, and one claim had to be withdrawn on
+measurement. Shipping as a research preview with those facts stated is honest;
 shipping as "release-ready" would not be.
