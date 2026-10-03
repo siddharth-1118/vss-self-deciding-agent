@@ -50,36 +50,59 @@ VSS ties plain at Q=1–4, plain leads by 3.4–6.9 pts at Q=8–50, and most of
 Q=8–16 deficit is VSS *abstaining* rather than answering wrongly (VSS answers
 98.6% correctly at 87.4% coverage).
 
-## 3. Real data — Banking77 (single seed, provisional)
+## 3. Real data — Banking77 (convergence-matched, single seed)
 
-Matched 1200 steps; one question per state, so this is also matched
-presentations.
+2000-step budget, each system at the learning rate its own screen selected
+(Banking77: **3e-4 for both**), validation-only checkpoint selection, seed 13.
+One question per real state, so matched steps are also matched presentations.
 
-| system | steps | epochs | choice acc | val loss | wall s |
-|---|---:|---:|---:|---:|---:|
-| VSS | 1200 | 4 | **0.8700** | 1.2035 | 949 |
-| plain | 1200 | 5 | 0.8200 | 0.7662 | 1979 |
+| system | steps | epochs | best epoch | early stop | choice acc | wall s |
+|---|---:|---:|---:|---|---:|---:|
+| **VSS** | 2000 | 8 | 7 | budget exhausted | **0.895** | 1876 |
+| plain | 1988 | 7 | 3 | yes (genuine) | 0.870 | 2352 |
 
-**Provisional, for two reasons that are stated rather than hidden:**
+**VSS leads by 2.5 points and trains 1.25× faster** (1876 s vs 2352 s) on the
+same hardware, in the same session.
 
-1. Neither system is converged at 1200 steps. VSS's best accuracy lands on its
-   **final** epoch with the LR already annealed to 0, so 0.870 is a floor, not a
-   ceiling. A convergence-matched re-run at ~2000 steps is required.
-2. **The pre-audit checkpoints do not reproduce.** The historical plain
-   Banking77 checkpoint (`runs/mqv-plain-banking77-s13/best.pt`, logged val
-   0.5206) scores 5.4961 / **0.075** accuracy when re-evaluated with the current
-   code, tokenizer and label mapping (`benchmarks/multi_question_value/diag_plain_clinc.py`).
-   The ClINC150 one scores 8.6164 / **0.000** against its logged 0.395. Both load
-   with zero missing or unexpected tensors, so this is not a shape mismatch.
-   Until that is explained, the older "plain 0.8867" figure **cannot be used as
-   the convergence reference**, and this report does not rely on it.
+Two caveats, stated rather than buried:
 
-What the Banking77 comparison *does* establish: the previously reported
-Banking77 VSS number (0.76) came from a checkpoint frozen at `lr=0` for 3 of its
-4 epochs. Fixing that alone moved VSS from 0.645 to 0.870 (**+22.5 points**),
-which is far larger than any architectural difference measured in this study.
+* **VSS's best lands on its final epoch** (`early=False`, budget exhausted), so
+  0.895 is a floor, not a ceiling. Plain's 0.870 is a true convergence point.
+* **One seed.** A 2.5-point gap is smaller than the spread typically seen across
+  seeds on a 77-class task, so this is **not** yet a defensible ranking. See §12.
 
-## 4. Real data — CLINC150 (withdrawn)
+What the comparison *does* establish, independent of seeds: the previously
+reported Banking77 VSS number (0.76) came from a checkpoint frozen at `lr=0` for
+three of its four epochs. Fixing the step budget moved VSS from 0.645 to 0.895
+(**+25 points**) — an order of magnitude larger than any architectural
+difference measured in this study.
+
+## 4. Real data — CLINC150 (convergence-matched, single seed) — **the plain baseline wins**
+
+2000-step budget, each system at its own screened learning rate (plain **1e-3**,
+VSS **3e-4** — they genuinely disagree here), validation-only selection, seed 13.
+
+| system | steps | epochs | best epoch | early stop | choice acc | wall s |
+|---|---:|---:|---:|---|---:|---:|
+| VSS | 1665 | 5 | 1 | yes (genuine) | 0.675 | 1061 |
+| **plain** | 2000 | 7 | 5 | budget exhausted | **0.915** | 1205 |
+
+**The plain classifier beats VSS on CLINC150 by 24 points.** This reverses the
+earlier reading completely and is reported as found:
+
+* The earlier "VSS 0.700 vs plain 0.000" was an artefact of two compounding
+  errors — the plain arm trained a *different task* (`header_only_choice`
+  mismatch, D26), and both arms ran at a synthetic-derived learning rate with
+  too small a budget. Correcting both puts plain at **0.915**.
+* VSS early-stops at epoch 5 with its best at **epoch 1**: it peaks almost
+  immediately and then degrades on 151 classes (epoch 1 eval 2.07 → epoch 3
+  3.34). This is a genuine weakness at this label cardinality, not an artefact
+  of the budget — plain's curve was still improving at 2000 steps.
+
+CLINC150 is therefore **no longer withdrawn as void**; it is now a *measured
+result in which VSS loses*. The previous withdrawal is retained below as history,
+because the specific error it recorded (a broken baseline presented as a
+comparison) is worth not reintroducing.
 
 At 1200 steps the plain baseline **failed**: train loss 1.66 → 0.03 while
 validation loss *rose* 4.53 → 5.95 and choice accuracy fell to **0.000**.
@@ -281,14 +304,37 @@ fully reproducible artifact here.
 ## 11. Limitations that constrain every number above
 
 1. **One seed** on every result reported here. No variance estimate; differences
-   under ~2 points are not meaningful.
-2. **Real-data comparisons are not convergence-matched** (§3).
-3. **CLINC150 is withdrawn** pending a per-dataset LR screen (§4).
+   under ~2 points are not meaningful. This is the binding constraint on §3.
+2. **VSS is not converged on either real dataset.** Its best checkpoint lands on
+   the final epoch with the budget exhausted in both cases, so its real-data
+   numbers are floors, not ceilings. Plain's CLINC150 curve was still improving
+   at 2000 steps.
+3. **Validation slices are 200 examples** (`sweep.VAL_SLICE`). A 2.5-point
+   difference on n=200 is roughly 5 examples — inside binomial noise at one
+   seed.
 4. **Absolute timings are contended**; only same-session ratios are valid (§6).
 5. **OOD abstention does not work** (§8). Any claim that the model detects
    unfamiliar input is withdrawn.
-6. **Macro-F1 on real data and multi-seed dispersion are not yet reported** —
-   they are required for the final release and are listed as remaining evidence
-   in `docs/release_readiness.md`.
-6. **Training presents 15 options; evaluation ranks the full label set.** This
-   deliberate distribution shift is where the plain baseline failed.
+6. **Macro-F1, per-class error analysis and risk-coverage on real data are not
+   reported** — they exist only for the verified synthetic run (§10).
+7. **Training presents 15 options; evaluation ranks the full label set.** This
+   deliberate distribution shift is part of what the plain baseline handles well
+   on CLINC150 (§4).
+8. **Synthetic results do not predict real-data results.** The synthetic tie
+   (§2) coexisted with a 24-point real-data loss (§4) and a 2.5-point real-data
+   win (§3). Neither direction generalises from one to the other.
+
+## 12. What the evidence supports, stated plainly
+
+| comparison | verdict |
+|---|---|
+| VSS vs plain, Banking77, 2000 steps, seed 13 | VSS +2.5 pts, 1.25× faster. **Provisional** — single seed, VSS not converged. |
+| VSS vs plain, CLINC150, 2000 steps, seed 13 | **plain +24.0 pts.** Reported as found. Single seed, but the gap is far outside noise. |
+| VSS vs plain, synthetic, matched exposure | Tie (§2), one seed. |
+| Synthetic → real generalisation | **No.** §2 and §4 disagree in sign. |
+
+The honest summary: **VSS wins one real dataset by a margin it cannot yet defend,
+and loses the other by a margin it cannot hide.** A single-seed 24-point deficit
+is a real finding about the architecture at 151 classes; a single-seed 2.5-point
+lead is not a defensible ranking. Treat the Banking77 number as "promising,
+unproven" and the CLINC150 number as "established".
