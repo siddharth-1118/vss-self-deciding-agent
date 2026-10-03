@@ -215,6 +215,20 @@ Fixing that alone moved VSS from 0.645 (void 400-step run) to 0.870, i.e.
 **+22.5 points from Findings 5/6**, which is far larger than any architectural
 difference the study has measured.
 
+### D25. CLINC150 at 1200 steps: VSS 0.700 vs plain 0.000 — VOID, do not cite
+The CLINC150 pair trained at the same budget. VSS behaved normally (0.36 → 0.63 →
+0.625 → 0.70 choice accuracy, val loss 3.74 → 2.27). The plain baseline
+**collapsed**: train loss 1.66 → 0.03 while val loss *rose* 4.53 → 5.95 and
+accuracy fell 0.085 → 0.020 → **0.000**, below the 0.0067 random baseline for
+151 classes.
+
+The likely cause is that the sweep applies **one** learning rate — 3e-4, chosen by
+the screen on the *synthetic* dataset (`benchmarks/convergence/selected_lrs.json`)
+— to every dataset, and 3e-4 was never screened against a 151-class output.
+This measures learning-rate mis-transfer, not architecture. Both CLINC150 run
+JSONs are kept for the record; the comparison is **void** and is listed as the
+top next experiment (per-dataset LR screen) in `docs/convergence_report.md` §12.
+
 ### D21. At matched data exposure VSS and the plain classifier are tied on synthetic — DEMONSTRATED (1 seed)
 Converged, early-stopped, identical schedule implementation and LR selection
 (3e-4 for both), matched (state, question) presentations (VSS 400 steps x 8
@@ -347,7 +361,9 @@ Banking77 (0.998/0.999) figures come from pre-audit-fix code and are
 - **The real-data value test is NOT re-measured.** CLINC150 and Banking77
   results in this file were produced before the convergence audit and before the
   RoPE position fix; their order-invariance, interference and selective-accuracy
-  figures are withdrawn as known-suspect, not as disproven.
+  figures are withdrawn as known-suspect, not as disproven. The convergence
+  re-runs (D24, D25) are *training-only* comparisons on a 200-example validation
+  slice; they do not replace the benchmark, and D25 is void outright.
 - **The first real-data re-run attempt was itself void.** While starting it, audit
   finding 5 was found: the epoch loop ignored the global step budget, so on
   banking77 (283 steps/epoch) a 400-step budget produced 4 reported epochs of

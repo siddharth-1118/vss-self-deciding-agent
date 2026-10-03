@@ -15,6 +15,21 @@ reason its synthetic numbers are being re-measured from scratch.**
 
 ## 1. Defects found
 
+| # | Severity | Defect | Where it bit |
+|---|---|---|---|
+| 1 | CRITICAL | Synthetic splits were nested prefixes (`validation == train[:300]`, `test == train`) | synthetic selection + test |
+| 2 | MAJOR | Fixed 150-step warmup ate 75% of the 200-step schedule; `lr_lambda(0) == 0` | VSS everywhere |
+| 3 | MAJOR | stable-RoPE positions used example 0's state length for the whole batch | variable-length states (real data) |
+| 4 | MODERATE | `evaluate()` averaged per-batch means, so selection depended on batch composition | validation signal |
+| 5 | **CRITICAL** | epoch loop ignored the global step budget; post-budget epochs ran at `lr=0` and faked an early stop | real data only |
+| 6 | MODERATE | mid-epoch checkpoints wrote `history=[]`, wiping a resumed run's per-epoch records | real data only, resumed runs |
+
+Findings 5 and 6 were found **after** the synthetic study was concluded, while
+re-running the real-data arms. Neither can appear in a short, uninterrupted run:
+both need a dataset large enough that the step budget expires mid-run, and an
+interrupt long enough to trigger a resume. That is exactly the profile of the
+real-data arms, and exactly the profile the synthetic study did not have.
+
 ### Finding 1 — CRITICAL: the synthetic splits were nested prefixes of one another
 
 `generate_synthetic(n_states, seed, split)` called `random.Random(seed)` for
