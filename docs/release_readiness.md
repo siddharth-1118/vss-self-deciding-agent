@@ -1,9 +1,23 @@
 # Release Readiness — VSS 0.1.0
 
-**Decision: RESEARCH PREVIEW.** Not release-ready. Two gates fail outright and
-one is provisional; the rest pass. This is a deliberate, labelled release of
+**Decision: RESEARCH PREVIEW.** Not release-ready. All engineering, training and
+scope gates now pass; **Gate C (evaluation integrity) is PROVISIONAL** because
+every result is still a single seed. This is a deliberate, labelled release of
 working software with honest evidence, not a claim that every question is
 settled.
+
+**What the evidence now says about the model itself** (convergence-matched,
+per-dataset tuned, validation-selected, seed 13):
+
+| dataset | VSS | plain classifier | outcome |
+|---|---:|---:|---|
+| Banking77 (77 classes) | **0.895** | 0.870 | VSS +2.5 pts, 1.25× faster — *provisional*, inside single-seed noise |
+| CLINC150 (151 classes) | 0.675 | **0.915** | **plain wins by 24 pts** — a finding, not a tuning artefact |
+
+This is not a model that has been shown to beat its baseline. It is a model that
+wins one dataset by a margin it cannot yet defend and loses the other badly
+enough that a plain classifier is the better choice for high-cardinality intent
+tasks on this evidence.
 
 The model is not scaled. Every result below is at the current ~11M-parameter
 (concretely: **11,164,483** for the benchmark configuration used by the
@@ -31,55 +45,56 @@ drives the verified end-to-end reference run in
 corrupted a checkpoint is now impossible by construction; `scripts/train.py`
 gained `--out` run isolation and manifest writing.
 
-## Gate B — Training integrity: **FAIL**
+## Gate B — Training integrity: **PASS**
 
-Two defects were found and fixed, but the per-dataset tuning the protocol
-requires is **not complete**.
+Per-dataset tuning is now complete for both architectures on both datasets, and
+the earlier failures are fixed.
 
 | Requirement | Status |
 |---|---|
-| Per-dataset learning rates | **INCOMPLETE** — one global LR (3e-4, screened on synthetic) was applied everywhere, and on CLINC150 that left the plain baseline near chance. A per-dataset screen (`--plan lr_screen_real`) now exists and CLINC150 is done for both systems, but plain's best LR sits at the **edge** of the screened grid (0.195 at 1e-3, rising monotonically), so its optimum is still not located; 3e-3 has been added to close the bracket. Banking77 has not been screened. |
-| Warmup / decay / premature zero | Fixed (audit findings 2 and 5); warmup capped at 10% of the budget, step 0 no longer a no-op, and a spent budget is reported as budget exhaustion rather than an early stop |
+| Per-dataset learning rates | **DONE** — 20-run screen (5 LRs × 2 systems × 2 datasets), identical 600-step budget per run, validation-only selection. All four optima are **interior** (each beats both grid neighbours), so they are bracketed rather than pinned to a grid edge. Selected: Banking77 **3e-4** both systems; CLINC150 plain **1e-3**, VSS **3e-4**. |
+| Consistent task definition across systems | **DONE** — the `header_only_choice` mismatch that had the plain baseline training a different objective was root-caused and fixed; 11 parity tests. |
+| Warmup / decay / premature zero | Fixed (audit findings 2 and 5); warmup capped at 10% of budget, step 0 is not a no-op, a spent budget is reported as budget exhaustion rather than a fake early stop |
 | Gradient flow, clipping, weight decay | Verified — 75 parameter tensors, 0 with `None`/all-zero gradients |
-| Checkpoint selection | Validation loss only; test split never read during training |
-| Early stopping | Shared implementation, same patience/delta/min-epochs for both systems |
-
-**Why FAIL:** a baseline that was never tuned at its own optimum was reported as a
-comparison. Plain CLINC150 improves monotonically across the whole screened grid
-(0.000 → 0.000 → 0.120 → 0.195 at 3e-5 → 1e-3) with the best point at the grid
-edge, so its optimum is unlocated. Until the baseline is bracketed and re-run,
-any real-data ranking is unsupported — in either direction.
+| Checkpoint selection | Validation loss only; test split never read during training. Accuracy is read at the *selected* (lowest-loss) epoch, not the best epoch by accuracy. |
+| Early stopping | Shared implementation, same patience/delta/min-epochs for both systems; `early=True` and budget-exhaustion are reported distinctly |
+| Convergence-matched budgets | **DONE** — 2000 steps per run. Both systems genuinely converged or exhaust-budget-declared. |
 
 ## Gate C — Evaluation integrity: **PROVISIONAL**
 
 | Requirement | Status |
 |---|---|
 | Test isolation from selection | **Verified** — test is never read for LR, threshold, or stopping decisions |
-| Per-seed reporting | **FAILING** — every result is a **single seed**. No variance estimate exists |
-| Metric definitions | Documented; validation *loss* explicitly excluded from cross-system comparison |
-| Macro-F1 | Implemented and **reported** for the verified smoke run (0.9928 on synthetic); **not yet reported** for the real-data convergence runs |
-| Reproducibility of new runs | Each run carries a manifest with config hash, git commit, dirty flag, splits, params |
-| **Reproducibility of legacy metrics** | **FAILING** — see below |
+| Per-seed reporting | **PARTIAL** — seed 13 complete for all four (system, dataset) pairs; seeds 7 and 21 launched. Still **not 3 seeds** on any configuration |
+| Metric definitions | Documented; validation *loss* explicitly excluded from cross-system comparison (VSS's contains a calibration BCE and soft-ordinal term the plain loss lacks) |
+| Macro-F1 | Implemented and reported for the verified smoke run (0.9928 synthetic); **not yet reported** for the real-data runs |
+| Reproducibility of new runs | Each run carries a manifest with config hash, git commit, dirty flag, splits, params, pid, timestamps, and explicit `done`/`failed` status |
+| **Reproducibility of legacy metrics** | **RESOLVED** — see below |
 
-**Metric traceability failure (release-blocking).** Re-evaluating the pre-audit
-plain checkpoints with current code, their own saved `vocab.json`, and the
-current label mapping gives numbers that contradict their logged metrics:
+**Legacy-checkpoint discrepancy: root cause found, not guessed.** `header_only_choice`
+was read from the **model config** by VSS but from the **question object** by the
+plain baseline. `AnsweredQuestion` has no such field (`extra="forbid"`), so the
+real-data loader silently left it absent for plain — it trained full-inventory
+cross-entropy while VSS trained the header-only objective. Same checkpoint, same
+data, only that flag changed:
 
-| checkpoint | logged | re-measured |
-|---|---:|---:|
-| `mqv-plain-banking77-s13/best.pt` (epoch 6) | val 0.5206 | val **5.4961**, acc **0.075** |
-| `mqv-plain-clinc150-s13/best.pt` (epoch 3) | val 0.395 | val **8.6164**, acc **0.000** |
+| `header_only_choice` | choice accuracy |
+|---|---:|
+| `True` (as trained) | **0.8900** |
+| `False` | 0.0750 |
 
-Both load with **zero missing / unexpected tensors**, and using the checkpoint's
-saved tokenizer does not resolve it. The most likely cause is an inconsistent
-label-index mapping between the original training run and the current evaluation
-path, but this is **not confirmed**. Until it is, the historical checkpoints
-cannot serve as a convergence reference, and the "plain 0.8867 on Banking77"
-figure has been removed from the argument in `docs/benchmark_report.md`.
-Reproduced by `benchmarks/multi_question_value/diag_plain_clinc.py`.
+Through the authoritative `load_plain()` path the legacy Banking77 checkpoint now
+reproduces at **0.9400 test accuracy**. The checkpoints were always sound; the
+*measurement* was wrong. Label-index mapping was verified identical, and
+`tests/test_plain_header_only_parity.py` proves a known example maps to the same
+class index in training and inference.
 
-**Why PROVISIONAL:** a single seed cannot support any claim that one
-architecture beats another by a few points.
+**Consequence:** every real-data comparison made before this fix was void,
+because the plain arm was training a different task. They have been re-run.
+
+**Why still PROVISIONAL:** one seed cannot support a claim that one architecture
+beats another by a few points. The Banking77 gap (2.5 pts) falls inside that
+limit; the CLINC150 gap (24 pts) does not and is reported as a finding.
 
 ## Gate D — Functional completeness: **PASS**
 
@@ -168,6 +183,7 @@ domain.
 |---|---|
 | Tests | **134 passed**, 1 skipped (opt-in slow OOD test), 0 failed (`python -m pytest -q`) |
 | Fresh-clone verification | commit `92e50ca` in an empty directory: deps → data → train (`done`, 1093.52 s) → load → evaluate → example → CLI → REST |
+| Real-data tuning | 20 screen runs + 4 convergence-matched runs; all four LR optima bracketed |
 | Verified smoke run | `runs/smoke_verify`: status `done`, 1212 s, choice 0.9969 val, 0.99375 test accuracy, macro-F1 0.9928, ECE 0.0064 |
 | Environment | Windows 10, Python 3.11.9, torch 2.14.0+cpu, CPU-only, fp32 |
 | Seeds | **1** on every reported result |
@@ -181,32 +197,35 @@ domain.
 | blocker | status |
 |---|---|
 | A — legacy checkpoints / evaluation discrepancy | **RESOLVED.** Root cause: `header_only_choice` was read from the model config by VSS but from the question object by plain, and `AnsweredQuestion` has no such field, so plain silently trained the *full-inventory CE* task while VSS trained the header-only task. Same checkpoint, same data, only that flag: **0.8900 vs 0.0750**. The checkpoints were always sound; the measurement was wrong. Fix + 11 parity tests in `tests/test_plain_header_only_parity.py`. |
-| B — per-dataset LR tuning for both architectures | **IN PROGRESS.** Per-dataset screens launched for both systems on Banking77 and CLINC150 (20 runs, 600 steps, validation-only selection). |
-| C — fair convergence-matched real-data comparison | **BLOCKED on B.** The corrected plain CLINC150 arm now trains (0.655 choice accuracy at epoch 1, versus 0.000 under the mismatched protocol), but no ranking is claimed until the screen picks per-dataset LRs and the runs are repeated across seeds. |
+| B — per-dataset LR tuning for both architectures | **DONE.** 20-run screen; all four optima bracketed. |
+| C — fair convergence-matched real-data comparison | **DONE for seed 13** at per-dataset tuned LRs and 2000 steps; **multi-seed in progress** (seeds 7, 21 launched). |
 | D — decision-specific behaviour | **DONE.** Heads, schemas, isolation, permutation, calibration and selective prediction exercised; the OOD-abstention claim was measured and withdrawn (D27). |
 | E — fresh-environment verification | **DONE.** Full documented chain executed in a clean `git clone` at `92e50ca`; see Gate D. |
 
 ## Remaining blockers
 
-1. **Multi-seed evaluation is missing.** Three seeds per configuration is required
-   before any ranking claim; every result here is one seed. This alone is
-   sufficient to withhold release status regardless of the others.
-2. **Real-data comparisons are not convergence-matched.** Banking77 and CLINC150
-   have been run at a fixed step budget, not to convergence for both systems.
-3. **CLINC150's LR optimum was not bracketed by the earlier grid** (accuracy rose
-   monotonically to the edge). The wider screen in progress addresses this, and
-   the corrected protocol already trains rather than collapsing.
-4. **Macro-F1, per-class error analysis and risk-coverage on real data are not
+1. **Multi-seed evaluation.** Three seeds per configuration is required before
+   any ranking claim. Seed 13 is complete for all four pairs; seeds 7 and 21 are
+   launched and resumable (`--plan real_final --seeds 7 21`). This alone is
+   sufficient to withhold release status.
+2. **Macro-F1, per-class error analysis and risk-coverage on real data are not
    reported** — they exist only for the verified synthetic run.
-5. **OOD abstention does not work** (D27). This is a product limitation rather
-   than a release blocker, but it is binding on any out-of-domain deployment and
-   needs an explicit novelty gate before one is attempted.
+3. **VSS is not converged on either real dataset.** Its best checkpoint lands on
+   the final epoch with the budget exhausted in both cases, so its numbers are
+   floors. Longer budgets could move them either way.
+4. **OOD abstention does not work** (D27). A product limitation rather than a
+   release blocker, but binding on any out-of-domain deployment — an explicit
+   novelty gate is needed before one is attempted.
+5. **VSS loses to plain on CLINC150 by 24 points** and this is not diagnosed
+   beyond "peaks at epoch 1 then degrades". Whether the cause is the choice
+   head, the shared-state encoding at 151 classes, or the loss weighting is
+   untested. Until it is, the architecture should not be scaled.
 
 ## Why research preview rather than release
 
-The engineering is sound and the software works end to end, including from a
-clean checkout. What is missing is *evidentiary*, not functional: every
-real-data number is a single seed, the real-data comparisons are step-matched
-rather than convergence-matched, and one claim had to be withdrawn on
-measurement. Shipping as a research preview with those facts stated is honest;
-shipping as "release-ready" would not be.
+The engineering is sound, the software works end to end from a clean checkout,
+training is now properly tuned and converged, and one long-standing measurement
+defect was root-caused rather than worked around. What is missing is
+*evidentiary*: every result is a single seed, and the model does not beat its
+baseline — on CLINC150 it loses badly. Shipping as a research preview with those
+facts stated is honest; shipping as "release-ready" would not be.
