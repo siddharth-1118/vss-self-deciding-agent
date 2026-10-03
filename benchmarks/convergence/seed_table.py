@@ -29,20 +29,41 @@ sys.path.insert(0, str(ROOT / "benchmarks" / "convergence"))
 from lr_table import selected_epoch  # noqa: E402
 
 
-def collect(steps: int) -> dict[tuple[str, str], list[tuple[int, float, float, bool]]]:
+def collect(steps: int, rule: str = "loss"):
+    """Gather (seed, accuracy, wall, early) per (dataset, system).
+
+    `rule` selects how the reported accuracy is picked from each run's history:
+    "loss" reproduces what the trainer did at the time (minimum validation loss),
+    "accuracy" is the corrected rule (maximum validation choice accuracy, loss as
+    tie-break). Both are derived from the same recorded history, so the
+    corrected comparison needs no new training.
+    """
     runs: dict[tuple[str, str], list[tuple[int, float, float, bool]]] = {}
     pattern = str(ROOT / "benchmarks" / "convergence" / "runs" /
                   f"*-st{steps}-final.json")
     for path in sorted(glob.glob(pattern)):
         run = json.load(open(path, encoding="utf-8"))
-        sel = selected_epoch(run)
-        if sel is None:
+        history = [h for h in run.get("history", [])
+                   if h.get("choice_accuracy") is not None]
+        if not history:
             continue
+        if rule == "accuracy":
+            # Max accuracy, ties broken by the shared rule's secondary metric
+            # (loss), earliest epoch on a full tie.
+            def key(h):
+                loss = h.get("val_loss", h.get("eval_loss"))
+                return (-float(h["choice_accuracy"]),
+                        float(loss) if loss is not None else float("inf"), h["epoch"])
+            sel = min(history, key=key)
+        else:
+            sel = selected_epoch(run)
+            if sel is None:
+                continue
         stem = Path(path).stem.replace(f"-st{steps}-final", "")
         system, dataset, seed = stem.split("-")[0], stem.split("-")[1], \
             int(stem.split("-")[2].lstrip("s"))
-        key = (dataset, system)
-        runs.setdefault(key, []).append(
+        key2 = (dataset, system)
+        runs.setdefault(key2, []).append(
             (seed, float(sel["choice_accuracy"]),
              float(run.get("wall_seconds", 0)), bool(run["stopped_early"])))
     for key in runs:
@@ -54,6 +75,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--steps", type=int, default=2000)
     args = ap.parse_args()
+
+    report_rule(args.steps, "loss")
+    report_rule(args.steps, "accuracy")
 
     runs = collect(args.steps)
     if not runs:
@@ -103,6 +127,24 @@ def main() -> int:
                 print(f"               {s:5s} sd {statistics.stdev(accs):.4f} "
                       f"spread {max(accs) - min(accs):.3f}")
     return 0
+
+
+def report_rule(steps: int, rule: str) -> None:
+    runs = collect(steps, rule=rule)
+    if not runs:
+        return
+    label = ("minimum validation loss (what the trainer did)"
+             if rule == "loss"
+             else "maximum validation accuracy (corrected rule)")
+    print(f"\n# Selection rule: {label}\n")
+    for key in sorted(runs):
+        dataset, system = key
+        accs = [a for _, a, _, _ in runs[key]]
+        sd = statistics.stdev(accs) if len(accs) > 1 else None
+        per_seed = "  ".join(f"s{seed}={acc:.3f}" for seed, acc, _, _ in runs[key])
+        print(f"{dataset:10s} {system:7s} n={len(accs)} "
+              f"mean={statistics.mean(accs):.4f} "
+              f"sd={(f'{sd:.4f}' if sd is not None else '-'):>7s}  {per_seed}")
 
 
 if __name__ == "__main__":

@@ -106,6 +106,16 @@ class TrainingConfig:
     # `early_stop_min_delta`. None disables early stopping (train to `epochs`).
     early_stop_patience: int | None = None
     early_stop_min_delta: float = 1e-3
+    # Which validation quantity decides the best checkpoint and the early-stop
+    # counter. "accuracy" (default) selects on validation choice accuracy with
+    # loss as tie-break; "loss" restores minimum-eval-loss selection.
+    #
+    # Loss selection was measured to mis-select, and unequally: on Banking77 at
+    # three seeds it cost VSS up to 8 accuracy points while costing plain at most
+    # 1.5, because VSS's eval loss includes a calibration BCE and a soft-ordinal
+    # term that move independently of the choice head. See
+    # src/vss/training/selection.py.
+    selection_metric: Literal["accuracy", "loss"] = "accuracy"
     # Stop when eval loss has not improved for this many epochs, even if the
     # LR schedule has not finished (catches premature schedule termination).
     min_epochs: int = 1

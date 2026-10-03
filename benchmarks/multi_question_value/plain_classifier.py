@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from vss.model.serialize import serialize_example  # noqa: E402
 from vss.model.tokenizer import VSSTokenizer  # noqa: E402
 from vss.model.transformer import TransformerEncoder  # noqa: E402
+from vss.training import selection  # noqa: E402
 from vss.training.losses import score_losses  # noqa: E402
 from vss.training.trainer import effective_warmup, lr_lambda  # noqa: E402
 
@@ -294,6 +295,7 @@ def train_plain(
     ckpt = Path(ckpt_dir)
     ckpt.mkdir(parents=True, exist_ok=True)
     start_epoch, global_step, best_val = 0, 0, float("inf")
+    best_accuracy: float | None = None
     resume_batch = 0
     if (ckpt / "last.pt").exists():
         st = torch.load(ckpt / "last.pt", weights_only=False, map_location="cpu")
@@ -302,6 +304,7 @@ def train_plain(
         sched.load_state_dict(st["sched"])
         global_step = st["step"]
         best_val = st["best_val"]
+        best_accuracy = st.get("best_accuracy")
         if st.get("partial"):
             start_epoch, resume_batch = st["epoch"], st["batch_index"]
         else:
@@ -475,9 +478,18 @@ def train_plain(
         print(f"epoch {epoch}: train {ep_loss / max(1, nb):.4f} val {val:.4f} "
               f"choice_acc={vm.get('choice_accuracy')} lr={rec['lr']:.2e} "
               f"gnorm={rec['grad_norm_mean']:.3f} ({rec['seconds']}s)", flush=True)
-        is_best = val < best_val - getattr(cfg, "early_stop_min_delta", 0.0)
+        sel_metric = getattr(cfg, "selection_metric", "accuracy")
+        is_best = selection.is_improvement(
+            sel_metric,
+            accuracy=vm.get("choice_accuracy"),
+            loss=val,
+            best_accuracy=best_accuracy,
+            best_loss=best_val,
+            min_delta=getattr(cfg, "early_stop_min_delta", 0.0),
+        )
         if is_best:
             best_val = val
+            best_accuracy = vm.get("choice_accuracy")
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
@@ -485,13 +497,15 @@ def train_plain(
               {"model": model.state_dict(), "opt": opt.state_dict(),
                "sched": sched.state_dict(), "step": global_step,
                "epoch": epoch, "best_val": best_val,
+               "best_accuracy": best_accuracy,
                "partial": False, "batch_index": 0, "history": history,
                "epochs_without_improvement": epochs_without_improvement,
                "schedule_total_steps": total_steps, "schedule_warmup": warmup})
         if is_best:
             _save(ckpt / "best.pt",
                   {"model": model.state_dict(), "epoch": epoch,
-                   "val_loss": val})
+                   "val_loss": val,
+                   "val_choice_accuracy": vm.get("choice_accuracy")})
         patience = getattr(cfg, "early_stop_patience", None)
         if (patience is not None
                 and epoch + 1 >= getattr(cfg, "min_epochs", 1)

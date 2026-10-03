@@ -21,6 +21,7 @@ from ..data.schema import TrainingExample
 from ..model.config import VSSConfig
 from ..model.vss_model import VSSModel
 from .losses import combined_loss
+from . import selection
 
 
 def build_targets(example: TrainingExample) -> list[dict[str, Any]]:
@@ -209,6 +210,7 @@ class Trainer:
         warmup = effective_warmup(tcfg.warmup_steps, tcfg.warmup_frac, total_steps)
 
         start_epoch, global_step, best_loss = 0, 0, float("inf")
+        best_accuracy: float | None = None
         ckpt_dir = Path(tcfg.checkpoint_dir)
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         history: list[dict[str, Any]] = []
@@ -227,6 +229,7 @@ class Trainer:
             resume_batch = state.get("batch_index", 0) if partial else 0
             global_step = state["global_step"]
             best_loss = state.get("best_loss", float("inf"))
+            best_accuracy = state.get("best_accuracy")
             history = list(state.get("history", []))
             epochs_without_improvement = int(state.get("epochs_without_improvement", 0))
             # PIN the schedule shape. Recomputing total_steps from the current
@@ -280,7 +283,8 @@ class Trainer:
                     self._checkpoint(ckpt_dir / "last.pt", _epoch, gs, best_loss,
                                      partial=True, batch_index=batch_index,
                                      history=history,
-                                     epochs_without_improvement=epochs_without_improvement)
+                                     epochs_without_improvement=epochs_without_improvement,
+                                     best_accuracy=best_accuracy)
 
             global_step, losses, stats = self.train_epoch(
                 self.train, epoch, global_step, sched,
@@ -306,22 +310,36 @@ class Trainer:
                   + f" lr={rec['lr']:.2e}"
                   + f" gnorm={stats['grad_norm_mean']:.3f}"
                   + f" upd={stats['param_update_rel_mean']:.2e}", flush=True)
-            is_best = eval_loss is not None and eval_loss < best_loss - tcfg.early_stop_min_delta
+            sel_metric = getattr(tcfg, "selection_metric", "accuracy")
+            is_best = selection.is_improvement(
+                sel_metric,
+                accuracy=metrics.get("choice_accuracy"),
+                loss=eval_loss,
+                best_accuracy=best_accuracy,
+                best_loss=best_loss,
+                min_delta=tcfg.early_stop_min_delta,
+            )
             if is_best:
-                best_loss = eval_loss
+                if eval_loss is not None:
+                    best_loss = eval_loss
+                best_accuracy = metrics.get("choice_accuracy")
                 epochs_without_improvement = 0
             else:
                 epochs_without_improvement += 1
             self._checkpoint(ckpt_dir / "last.pt", epoch, global_step, best_loss,
-                             history=history, epochs_without_improvement=epochs_without_improvement)
+                             history=history,
+                             epochs_without_improvement=epochs_without_improvement,
+                             best_accuracy=best_accuracy)
             if is_best:
                 self._checkpoint(ckpt_dir / "best.pt", epoch, global_step, best_loss,
-                                 history=history, epochs_without_improvement=epochs_without_improvement)
+                                 history=history,
+                                 epochs_without_improvement=epochs_without_improvement,
+                                 best_accuracy=best_accuracy)
             self.model.save_pretrained(str(ckpt_dir / "final"))
             if (tcfg.early_stop_patience is not None
                     and epoch + 1 >= tcfg.min_epochs
                     and epochs_without_improvement >= tcfg.early_stop_patience):
-                print(f"early stop at epoch {epoch}: no eval-loss improvement >"
+                print(f"early stop at epoch {epoch}: no {sel_metric} improvement >"
                       f" {tcfg.early_stop_min_delta} for {epochs_without_improvement} epochs",
                       flush=True)
                 stopped_early = True
@@ -424,6 +442,7 @@ class Trainer:
         batch_index: int = 0,
         history: list[dict[str, Any]] | None = None,
         epochs_without_improvement: int = 0,
+        best_accuracy: float | None = None,
     ) -> None:
         # atomic write: a killed process (600s shell cap) can truncate a plain
         # torch.save mid-write; write tmp then replace so last.pt stays loadable
@@ -433,6 +452,10 @@ class Trainer:
             "epoch": epoch,
             "global_step": global_step,
             "best_loss": best_loss,
+            # Selection state for the shared rule in selection.py. Carried through
+            # the checkpoint so a resume cannot forget the incumbent accuracy and
+            # re-open a stale "best".
+            "best_accuracy": best_accuracy,
             "partial": partial,
             "batch_index": batch_index,
             "seed": self.tcfg.seed,

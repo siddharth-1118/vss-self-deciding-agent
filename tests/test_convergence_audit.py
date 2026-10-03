@@ -323,10 +323,12 @@ class TestMidEpochCheckpointPreservesHistory:
         orig = tr._checkpoint
 
         def spy(path, epoch, global_step, best_loss, partial=False,
-                batch_index=0, history=None, epochs_without_improvement=0):
+                batch_index=0, history=None, epochs_without_improvement=0,
+                best_accuracy=None):
             seen.append((epoch, partial, list(history or [])))
             return orig(path, epoch, global_step, best_loss, partial,
-                        batch_index, history, epochs_without_improvement)
+                        batch_index, history, epochs_without_improvement,
+                        best_accuracy)
 
         monkeypatch.setattr(tr, "_checkpoint", spy)
         tr.fit()
