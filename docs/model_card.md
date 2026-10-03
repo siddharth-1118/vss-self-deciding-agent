@@ -77,12 +77,30 @@ final: the release is a research preview, and the limitations below are binding.
 4. **Train/eval option-schema mismatch.** Training presents 15 options per
    example; evaluation ranks the full label set. This is intentional but is a
    distribution shift, and it is where the plain baseline failed on CLINC150.
-5. **No robustness guarantees for adversarial or out-of-distribution inputs.**
-   Calibration is measured on in-distribution data only.
-6. **CPU-only validation.** Every reported latency is CPU, fp32, single process,
+5. **`ABSTAIN` is not an out-of-distribution detector.** This was measured, not
+   assumed. `benchmarks/convergence/ood_probe.py` scored the quick-start
+   checkpoint on 320 in-distribution, 320 word-scrambled and 8 foreign-topic
+   states:
+
+   | set | n | abstain rate | mean confidence |
+   |---|---|---|---|
+   | in-distribution | 320 | 0.1031 | 0.8904 |
+   | word-scrambled | 320 | 0.1062 | 0.8895 |
+   | foreign topic | 8 | **0.0000** | **0.9422** |
+
+   Destroying every lexical token left abstention unchanged (0.103 -> 0.106),
+   and fluent off-domain text was answered with *higher* confidence than
+   in-distribution text. The abstain head therefore behaves like a roughly 10%
+   prior, not a novelty detector. Treat `ABSTAIN` as a confidence threshold to
+   tune, never as evidence that input is unfamiliar. Pinned by
+   `tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`.
+6. **No robustness guarantees for adversarial inputs.** Calibration is measured
+   on in-distribution data only, and finding 5 above means it should not be
+   assumed to transfer.
+7. **CPU-only validation.** Every reported latency is CPU, fp32, single process,
    on a contended machine. Absolute milliseconds are not portable; only
    same-session ratios are meaningful.
-7. **No multi-turn or stateful conversation handling.** A state is one context
+8. **No multi-turn or stateful conversation handling.** A state is one context
    blob.
 
 ## Risks
@@ -90,6 +108,7 @@ final: the release is a research preview, and the limitations below are binding.
 | risk | mitigation |
 |---|---|
 | Over-confident wrong answers | confidence + `ABSTAIN`; see abstention semantics below |
+| Unfamiliar input answered confidently | **Not mitigated.** Limitation 5: `ABSTAIN` does not detect OOD. Add an explicit novelty gate (embedding distance, retrieval, or a retrained abstention head) before deploying outside the training domain. |
 | Calibration drift on new domains | thresholds must be re-fitted per domain; never reuse a shipped threshold |
 | Silent schema errors | requests are strictly validated (`extra="forbid"`), malformed input returns 422 |
 | Benchmark over-reading | `docs/claims.md` marks each claim supported / provisional / withdrawn |
@@ -105,6 +124,13 @@ final: the release is a research preview, and the limitations below are binding.
 * **Confidence is not a guarantee of correctness.** It is a probability from a
   model that has only seen in-distribution data. Calibration degrades under
   distribution shift, and the shipped thresholds were fitted on specific splits.
+* **`ABSTAIN` does not mean "this input is unfamiliar."** It means the model's
+  top non-abstain probability fell below the threshold. Limitation 5 shows that
+  on the quick-start checkpoint this happens at roughly the same rate on
+  word-scrambled text as on real text, and essentially never on fluent
+  off-domain text. A caller that routes `ABSTAIN` to a human will therefore
+  catch ordinary low-confidence cases while missing confidently-wrong
+  unfamiliar ones.
 
 ## Version
 

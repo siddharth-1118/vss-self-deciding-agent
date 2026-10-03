@@ -304,6 +304,39 @@ real-data convergence run was training a *different task* than VSS (masked CE +
 full option text vs header-only + full-inventory CE). Those real-data
 comparisons are void and are being re-run; see D25.
 
+### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
+**Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the
+verified quick-start checkpoint on 320 in-distribution, 320 word-scrambled and 8
+foreign-topic states:
+
+| set | n | abstain rate | mean confidence |
+|---|---:|---:|---:|
+| in-distribution | 320 | 0.1031 | 0.8904 |
+| word-scrambled | 320 | 0.1062 | 0.8895 |
+| foreign topic | 8 | **0.0000** | **0.9422** |
+
+Destroying every lexical token moved abstention by 0.003. Fluent off-domain text
+(sourdough, sheep, TLS certificates) drew **zero** abstentions at *higher*
+confidence than in-distribution text. The head behaves like a ~10% prior, not a
+novelty detector.
+
+How it was found, because it is a lesson: `examples/basic.py` originally used a
+message that abstained at p=0.99, which looked like correct OOD behaviour. A
+nonsense control answered confidently at 0.88. The single anecdotal example
+would have supported the opposite conclusion to the truth, and the true
+conclusion only appeared once the two were measured side by side on 648 states.
+
+**Consequences.** `ABSTAIN` is documented as a confidence threshold, never a
+novelty alarm, in `docs/model_card.md` (limitations + abstention semantics) and
+`examples/basic.py`. Pinned by
+`tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`, which fails
+if detection ever starts working so the caveat cannot silently go stale. Any
+deployment outside the training domain needs an explicit novelty gate.
+
+This supersedes P2, which attributed the OOS-rejection numbers to trained
+abstention; those AUROC figures came from a different (real-data, pre-audit)
+harness and are not evidence for the shipped abstain head.
+
 ### D21. At matched data exposure VSS and the plain classifier are tied on synthetic — DEMONSTRATED (1 seed)
 Converged, early-stopped, identical schedule implementation and LR selection
 (3e-4 for both), matched (state, question) presentations (VSS 400 steps x 8

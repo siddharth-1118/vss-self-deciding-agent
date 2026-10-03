@@ -1,0 +1,30 @@
+{
+  "in_distribution": {
+    "n": 320,
+    "abstain_rate": 0.1031,
+    "mean_confidence": 0.8904,
+    "mean_abstain_probability": 0.0999
+  },
+  "word_scramble": {
+    "n": 320,
+    "abstain_rate": 0.1062,
+    "mean_confidence": 0.8895,
+    "mean_abstain_probability": 0.0997
+  },
+  "foreign_topic": {
+    "n": 8,
+    "abstain_rate": 0.0,
+    "mean_confidence": 0.9422,
+    "mean_abstain_probability": 0.0
+  },
+  "_verdict": {
+    "abstain_rate_ordering": {
+      "in_distribution": 0.1031,
+      "word_scramble": 0.1062,
+      "foreign_topic": 0.0
+    },
+    "monotonic_in_ood": false,
+    "detects_foreign_topic": false,
+    "ood_detection_works": false
+  }
+}

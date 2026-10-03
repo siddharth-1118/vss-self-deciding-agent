@@ -166,14 +166,50 @@ is a starved-checkpoint artifact — with converged training that comparison wou
 need redoing. **Selective accuracy is never compared directly against an
 always-on model's accuracy**; both are reported at stated coverage and risk.
 
-## 8. Question isolation
+## 8. Out-of-distribution abstention (measured, negative result)
+
+`benchmarks/convergence/ood_probe.py` on the verified quick-start checkpoint
+(`runs/smoke_verify/final`), full output in
+`benchmarks/convergence/results/ood_probe_synthetic.json`:
+
+| set | n | abstain rate | mean confidence | mean abstain prob |
+|---|---:|---:|---:|---:|
+| in-distribution (held-out eval) | 320 | 0.1031 | 0.8904 | 0.0999 |
+| word-scrambled (content destroyed) | 320 | 0.1062 | 0.8895 | 0.0997 |
+| foreign topic (fluent, off-domain) | 8 | **0.0000** | **0.9422** | 0.0000 |
+
+**The abstain head does not detect out-of-distribution input.** Three facts
+support that and none support the opposite:
+
+1. Shuffling every word of the message moved the abstain rate by 0.003
+   (0.1031 → 0.1062). A novelty detector should respond strongly to that.
+2. Fluent text about sheep, sourdough and TLS certificates drew **zero**
+   abstentions, at *higher* mean confidence (0.9422) than in-distribution text
+   (0.8904).
+3. So the ~10% rate is consistent with a near-constant prior rather than with
+   input-dependent evidence.
+
+This was found by probing the quick-start example: its original wording
+abstained at p=0.99 on a plausible support message, which looked like correct
+OOD behaviour, but a nonsense control answered confidently. The single example
+would have supported the wrong conclusion in both directions.
+
+Consequence: `ABSTAIN` is a confidence threshold, not a novelty alarm. Routing
+`ABSTAIN` to a human catches ordinary low-confidence cases while missing
+confidently-wrong unfamiliar ones. The limitation is binding on any deployment
+outside the training domain and is mirrored in `docs/model_card.md` (limitations
+and abstention semantics) and pinned by
+`tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`, which fails
+loudly if a future change makes detection work so the caveat cannot go stale.
+
+## 9. Question isolation
 
 Adding an unrelated question does not change an existing answer: pinned by
 `tests/test_api_robustness.py::TestOutputContract::test_adding_a_question_does_not_change_others`
 and by the synthetic interference measurement (paired decision flips, Q=8:
 +8.13 pts when co-asking, i.e. co-asking helps rather than hurts).
 
-## 9. Verified end-to-end reference run (synthetic quickstart)
+## 10. Verified end-to-end reference run (synthetic quickstart)
 
 Reproduced from a clean data directory with the documented commands. This is the
 one run in this repository whose full chain — data → train → manifest → load →
@@ -193,14 +229,16 @@ This is a **single seed** on generated synthetic data, and it does not
 substitute for the real-data runs above; it is included because it is the one
 fully reproducible artifact here.
 
-## 10. Limitations that constrain every number above
+## 11. Limitations that constrain every number above
 
 1. **One seed** on every result reported here. No variance estimate; differences
    under ~2 points are not meaningful.
 2. **Real-data comparisons are not convergence-matched** (§3).
 3. **CLINC150 is withdrawn** pending a per-dataset LR screen (§4).
 4. **Absolute timings are contended**; only same-session ratios are valid (§6).
-5. **Macro-F1, OOD metrics and multi-seed dispersion are not yet reported** —
+5. **OOD abstention does not work** (§8). Any claim that the model detects
+   unfamiliar input is withdrawn.
+6. **Macro-F1 on real data and multi-seed dispersion are not yet reported** —
    they are required for the final release and are listed as remaining evidence
    in `docs/release_readiness.md`.
 6. **Training presents 15 options; evaluation ranks the full label set.** This
