@@ -258,12 +258,45 @@ improving **monotonically** across the entire grid, with the best value at the
 baseline's optimum, so the plain arm is under-tuned and 3e-3 was added to close
 the bracket.
 
-Two hypotheses therefore remain live and are **not separated** by this
-experiment: (a) the 15-option-train → 151-option-eval transfer, since the plain
-choice head only ever discriminates within a 15-way subset, and (b) a learning
-rate selected on a different dataset. The comparison is **void**: a baseline at
-0.195 versus a tuned model at 0.575 is not a ranking. Do not cite
-"VSS 0.700 vs plain 0.000" as an architectural result.
+### D25b. The CLINC150 collapse was the `header_only_choice` mismatch, not the learning rate — DEMONSTRATED
+**D25's collapse is explained and the plain arm is re-measured.** The cause was
+identified in D26: VSS read `header_only_choice` from its **model config**, the
+plain baseline read it from the **question object**, and `AnsweredQuestion` has
+no such field — so on the real-data loader the flag was silently absent for
+plain, and it trained full-inventory cross-entropy while VSS trained the
+header-only objective. Same checkpoint, same data, only that flag changed:
+**0.8900 vs 0.0750** accuracy.
+
+With the protocol corrected, the widened per-dataset screen (20 runs, both
+architectures, both datasets, identical 600-step budget, validation-only
+selection, seed 13) gives choice accuracy at the selected checkpoint:
+
+| dataset | system | 3e-5 | 1e-4 | 3e-4 | 1e-3 | 3e-3 | selected |
+|---|---|---:|---:|---:|---:|---:|---|
+| Banking77 | plain | 0.655 | 0.775 | **0.880** | 0.845 | 0.795 | **3e-4** |
+| Banking77 | VSS | 0.130 | 0.520 | **0.770** | 0.685 | 0.110 | **3e-4** |
+| CLINC150 | plain | 0.335 | 0.625 | 0.790 | **0.815** | 0.775 | **1e-3** |
+| CLINC150 | VSS | 0.010 | 0.245 | **0.575** | 0.445 | 0.030 | **3e-4** |
+
+Plain CLINC150 now reaches **0.790–0.815** where the mismatch produced 0.000,
+so the collapse is gone. All four optima are **interior** (each beats both
+grid neighbours), so the optimum is bracketed rather than pinned to the edge —
+the specific defect that made the earlier sweep uninterpretable. Both systems
+independently pick 3e-4 on Banking77; on CLINC150 they disagree (plain 1e-3,
+VSS 3e-4), which is why a single global LR was the wrong policy.
+
+**Do not read the 600-step screen as a ranking.** VSS trails plain on both
+datasets there (0.770 vs 0.880; 0.575 vs 0.815) because 600 steps is ~2 epochs
+and VSS is the slower converger — at Banking77 3e-4 the final VSS epoch still
+shows train 0.42 against eval 1.68, i.e. still descending. The budget is
+identical for both, so it is fair for *selecting an LR* and not a fair basis for
+declaring a winner. Ranking claims come only from the separate 2000-step runs at
+these selected learning rates, and those remain single-seed.
+
+Rendered by `python benchmarks/convergence/lr_table.py`; selection derived from
+the run files by `sweep.plan_real_final`. Validation **loss** is not comparable
+across the two rows (VSS's includes a calibration BCE and a soft-ordinal term);
+only choice accuracy is.
 
 ### D26. ~~The pre-audit plain checkpoints do not reproduce their logged metrics~~ — RESOLVED, checkpoints are sound
 **This claim was wrong and is withdrawn.** The checkpoints were always fine; the

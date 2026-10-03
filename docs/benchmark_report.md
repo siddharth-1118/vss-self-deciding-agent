@@ -138,32 +138,50 @@ inconsistent selection rule to the validation set.
 
 Rendered by `python benchmarks/convergence/lr_table.py`.
 
-### Plain baseline (complete, both optima bracketed)
+### Results (complete: 20 runs, both architectures, both datasets)
 
-| dataset | 3e-5 | 1e-4 | 3e-4 | 1e-3 | 3e-3 | selected |
-|---|---:|---:|---:|---:|---:|---|
-| Banking77 | 0.655 | 0.775 | **0.880** | 0.845 | 0.795 | **3e-4** |
-| CLINC150 | 0.335 | 0.625 | 0.790 | **0.815** | 0.775 | **1e-3** |
+Choice accuracy on the held-out validation slice (n=200), at the selected
+checkpoint:
 
-Validation loss at those points: Banking77 0.5120, CLINC150 0.5672. Both winners
-are **interior** optima — each beats both grid neighbours — so the optimum is
-bracketed rather than pinned to the edge of the grid. That was the specific
-failure mode of the earlier single-LR sweep, where the best point sat on the
-grid boundary and the optimum was therefore unknown.
+| dataset | system | 3e-5 | 1e-4 | 3e-4 | 1e-3 | 3e-3 | selected |
+|---|---|---:|---:|---:|---:|---:|---|
+| Banking77 | plain | 0.655 | 0.775 | **0.880** | 0.845 | 0.795 | **3e-4** |
+| Banking77 | VSS | 0.130 | 0.520 | **0.770** | 0.685 | 0.110 | **3e-4** |
+| CLINC150 | plain | 0.335 | 0.625 | 0.790 | **0.815** | 0.775 | **1e-3** |
+| CLINC150 | VSS | 0.010 | 0.245 | **0.575** | 0.445 | 0.030 | **3e-4** |
+
+**All four optima are interior** — each winner beats both grid neighbours — so
+the optimum is bracketed rather than pinned to a grid edge. That was the
+specific failure of the earlier single-LR sweep, where the best point sat on the
+boundary and the true optimum was unknown. The wider grid (3e-3 added to close
+the bracket) is what made this visible.
+
+Both systems independently select **3e-4 on Banking77**. On CLINC150 they
+disagree — plain prefers 1e-3, VSS prefers 3e-4 — which is exactly why a single
+global LR was the wrong policy.
 
 **The CLINC150 collapse is resolved.** Under the corrected protocol the plain
 baseline reaches 0.790–0.815 choice accuracy where the `header_only_choice`
 mismatch produced 0.000. This is the single most important consequence of the
 audit: the earlier "VSS 0.700 vs plain 0.000" comparison was not merely
-imprecise, it was measuring a baseline trained on the wrong task.
+imprecise, it was measuring a baseline trained on a different task.
 
-### VSS (screen in progress)
+### Reading the screen correctly
 
-VSS banking77 at 3e-5 reaches 0.135 (validation loss 4.4825), far below the
-plain baseline at the same learning rate — expected, since 3e-5 is near the
-bottom of VSS's useful range. **No VSS-versus-plain comparison is stated until
-the VSS half completes**, because tuning one architecture and not the other
-would be exactly the fairness failure this section exists to correct.
+At the 600-step screen budget VSS is **behind** plain on both datasets
+(0.770 vs 0.880; 0.575 vs 0.815). That is **not** a ranking:
+
+* 600 steps is ~2 epochs on these datasets, and VSS is the slower converger —
+  at the same LR the VSS curve is still descending when the budget ends
+  (Banking77 3e-4: train 0.42 vs eval 1.68 at the final epoch).
+* Both architectures receive an identical budget, so the screen is *fair for
+  choosing an LR*. It is not a fair basis for declaring a winner.
+* The ranking therefore comes from separate 2000-step runs at these selected
+  learning rates (`--plan real_final`), which are still single-seed.
+
+Validation **loss** is not comparable across the two rows — VSS's eval loss
+includes a calibration BCE and a soft-ordinal term the plain loss never had.
+Only choice accuracy is compared.
 
 ## 6. Latency
 
