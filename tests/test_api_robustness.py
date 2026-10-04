@@ -19,6 +19,7 @@ sys.path.insert(0, str(REPO / "src"))
 
 from vss import VSS  # noqa: E402
 from vss.inference.engine import decide_once  # noqa: E402
+from vss.data.schema import QuestionIn  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -159,3 +160,36 @@ class TestRestApi:
             "state": {"message": "hi"},
             "questions": [{"id": "d", "type": "bogus", "options": ["a"]}]})
         assert r.status_code == 422
+
+
+# --- score bounds must be rejected at validation, not crash in the encoder ---
+#
+# The encoder raises `ValueError: score question requires min and max`, but
+# QuestionIn used to substitute 0.0 / 10.0 for a missing bound. A request naming
+# only `min` therefore passed validation and died mid-inference, which the REST
+# layer reports as a 500. Validation now matches the encoder's contract, so the
+# caller gets a 422-class error naming the problem.
+
+class TestScoreBoundsRequired:
+    @pytest.mark.parametrize("q", [
+        {"id": "s", "type": "score", "min": 0},
+        {"id": "s", "type": "score", "max": 10},
+        {"id": "s", "type": "score"},
+        {"id": "s", "type": "score", "min": 10, "max": 0},
+    ])
+    def test_rejected(self, q):
+        with pytest.raises(ValidationError):
+            QuestionIn(**q)
+
+    def test_error_names_the_requirement(self):
+        with pytest.raises(ValidationError) as exc:
+            QuestionIn(id="s", type="score", min=0)
+        assert "min and max" in str(exc.value)
+
+    def test_both_bounds_accepted(self):
+        q = QuestionIn(id="s", type="score", min=0, max=10)
+        assert q.resolved_min_max() == (0.0, 10.0)
+
+    def test_choice_still_needs_options(self):
+        with pytest.raises(ValidationError):
+            QuestionIn(id="c", type="choice")

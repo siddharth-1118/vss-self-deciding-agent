@@ -36,12 +36,48 @@ def _cmd_train(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_json_arg(value: str, what: str) -> object:
+    """Accept EITHER inline JSON or a path to a JSON file.
+
+    `--state` took inline JSON while `--questions` took only a path, with no
+    help text saying so. Passing inline JSON to `--questions` produced a raw
+    `OSError: [Errno 22] Invalid argument` traceback instead of an explanation.
+    Both now accept both forms, and a bad value produces one clear line on
+    stderr with a non-zero exit rather than a stack trace.
+    """
+    text = value.strip()
+    if text[:1] in "{[":
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise _CliError(f"--{what}: invalid inline JSON ({exc})") from None
+    path = Path(text)
+    if not path.exists():
+        raise _CliError(
+            f"--{what}: {text!r} is neither inline JSON (starting with {{ or [) "
+            f"nor an existing file. Write the JSON to a file, or pass it inline."
+        )
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise _CliError(f"--{what}: {path} is not valid JSON ({exc})") from None
+
+
+class _CliError(Exception):
+    """User-facing CLI error: printed as one line, no traceback."""
+
+
 def _cmd_decide(args: argparse.Namespace) -> int:
     from .api import VSS
 
+    state_arg = args.state if args.state is not None else args.state_file
+    if state_arg is None:
+        raise _CliError("--state (inline JSON) or --state-file (path) is required")
+    state = _load_json_arg(state_arg, "state")
+    questions = _load_json_arg(args.questions, "questions")
+    if not isinstance(questions, list):
+        raise _CliError("--questions must be a JSON array of question objects")
     model = VSS.from_pretrained(args.model)
-    state = json.loads(args.state) if args.state else json.loads(Path(args.state_file).read_text())
-    questions = json.loads(Path(args.questions).read_text())
     result = model.decide(state, questions)
     print(json.dumps(result, indent=2))
     return 0
@@ -138,9 +174,11 @@ def main() -> int:
 
     d = sub.add_parser("decide")
     d.add_argument("--model", required=True)
-    d.add_argument("--state")
-    d.add_argument("--state-file")
-    d.add_argument("--questions", required=True)
+    d.add_argument("--state", help='state as inline JSON, e.g. \'{"message": "..."}\'')
+    d.add_argument("--state-file", help="path to a JSON file holding the state")
+    d.add_argument("--questions",
+                   help='questions as inline JSON or a path to a JSON file, '
+                        'e.g. \'[{"id":"dept","type":"choice","options":["a","b"]}]\'')
     d.set_defaults(fn=_cmd_decide)
 
     s = sub.add_parser("serve")
@@ -165,7 +203,13 @@ def main() -> int:
     g.set_defaults(fn=_cmd_generate)
 
     args = ap.parse_args()
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except _CliError as exc:
+        # A user mistake is not a crash. One line on stderr, non-zero exit.
+        print(f"vss {getattr(args, 'cmd', '')}: error: {exc}".replace("  ", " "),
+              file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

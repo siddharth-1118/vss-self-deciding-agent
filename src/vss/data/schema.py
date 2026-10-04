@@ -36,9 +36,17 @@ class QuestionIn(BaseModel):
         if self.type == "choice" and not self.options:
             raise ValueError(f"question {self.id!r}: choice requires options")
         if self.type == "score":
-            lo = self.min if self.min is not None else 0.0
-            hi = self.max if self.max is not None else 10.0
-            if not hi > lo:
+            # Both bounds are REQUIRED. The encoder builds the score head's
+            # ordinal bins from them and raises "score question requires min and
+            # max" if either is absent. This validator used to substitute 0.0 /
+            # 10.0 for the missing one, so a request naming only `min` passed
+            # validation and then died mid-inference -- a 500 from the REST API
+            # instead of a 422 with an explanation. Validation now matches the
+            # encoder's actual contract.
+            if self.min is None or self.max is None:
+                raise ValueError(
+                    f"question {self.id!r}: score requires both min and max")
+            if not self.max > self.min:
                 raise ValueError(f"question {self.id!r}: max must exceed min")
         return self
 
@@ -51,8 +59,9 @@ class QuestionIn(BaseModel):
 
     def resolved_min_max(self) -> tuple[float, float]:
         if self.type == "score":
-            lo = self.min if self.min is not None else 0.0
-            hi = self.max if self.max is not None else 10.0
+            if self.min is None or self.max is None:
+                raise ValueError(f"question {self.id!r}: score requires both min and max")
+            lo, hi = self.min, self.max
             if not hi > lo:
                 raise ValueError(f"question {self.id!r}: max must exceed min")
             return lo, hi

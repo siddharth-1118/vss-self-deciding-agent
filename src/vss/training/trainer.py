@@ -135,6 +135,12 @@ class Trainer:
         if self.tcfg.max_steps:  # GLOBAL step cap (was per-epoch; see config)
             order = order[: max(1, self.tcfg.max_steps) * bs]
         losses: list[float] = []
+        # Per-component accumulation. combined_loss already returns the split
+        # (choice / noul / score / ordinal / calibration); the trainer kept only
+        # the total, so NO run artifact could say which term drove the
+        # non-monotonic validation loss on CLINC150. Cheap to keep, and
+        # impossible to recover after the fact.
+        comp_totals: dict[str, list[float]] = {}
         grad_norms: list[float] = []
         update_norms: list[float] = []
         self.model.train()
@@ -181,6 +187,9 @@ class Trainer:
                 if sched is not None:
                     sched.step()
             losses.append(parts["total"])
+            for _k, _v in parts.items():
+                if _k != "total":
+                    comp_totals.setdefault(_k, []).append(_v)
             global_step += 1
             if self.tcfg.max_steps and global_step >= self.tcfg.max_steps:
                 break  # global step budget exhausted (docs/convergence_report.md §5)
@@ -194,6 +203,7 @@ class Trainer:
             "param_update_rel_mean": sum(update_norms) / max(1, len(update_norms)),
             "param_update_rel_max": max(update_norms) if update_norms else 0.0,
             "n_updates": float(len(update_norms)),
+            **{f"train_{k}": sum(v) / len(v) for k, v in comp_totals.items() if v},
         }
         return global_step, losses, stats
 
@@ -290,6 +300,18 @@ class Trainer:
                 self.train, epoch, global_step, sched,
                 step_hook=hook, skip_batches=resume_batch,
             )
+            # An epoch that performed ZERO optimizer steps is not an epoch. It
+            # still costs a full validation pass and, worse, appends a history
+            # record whose metrics duplicate the previous epoch -- which also
+            # increments `epochs_without_improvement` and can trip early
+            # stopping on evidence that could not have changed. Observed on
+            # CLINC150 seeds 7 and 21, where the trailing epoch took 2-3 s
+            # against ~200 s for real ones and reproduced the prior metrics
+            # exactly.
+            if global_step == steps_at_epoch_start:
+                print(f"epoch {epoch}: no optimizer steps taken (budget already "
+                      f"exhausted); stopping without recording", flush=True)
+                break
             resume_batch = 0  # only the first resumed epoch replays partially
             mean_loss = sum(losses) / max(1, len(losses))
             metrics = self.evaluate_detailed() if self.eval else {}
@@ -374,6 +396,7 @@ class Trainer:
         loss_sum = 0.0
         n_rows = 0
         per_type_loss: dict[str, list[float]] = {}
+        per_component: dict[str, list[float]] = {}
         n_choice = n_choice_correct = 0
         n_abstain = 0
         correct: list[float] = []
@@ -393,6 +416,8 @@ class Trainer:
                     n_rows += 1
                     loss_sum += rl
                     per_type_loss.setdefault(row["type"], []).append(rl)
+                    for _c, _v in _row_loss_components(row, tgt, self.tcfg).items():
+                        per_component.setdefault(_c, []).append(_v)
                     if row["type"] == "choice":
                         logits = torch.cat(
                             [row["logits"], row["abstain_logit"].reshape(1)]
@@ -416,6 +441,9 @@ class Trainer:
         m: dict[str, float] = {"loss": loss_sum / max(1, n_rows), "n_rows": float(n_rows)}
         for t, vals in per_type_loss.items():
             m[f"{t}_loss"] = sum(vals) / max(1, len(vals))
+        # Unweighted component breakdown, e.g. comp_choice / comp_calibration.
+        for c, vals in per_component.items():
+            m[f"comp_{c}"] = sum(vals) / max(1, len(vals))
         m["choice_accuracy"] = n_choice_correct / max(1, n_choice)
         m["choice_n"] = float(n_choice)
         m["abstain_rows"] = float(n_abstain)
@@ -470,6 +498,43 @@ class Trainer:
         tmp = path.with_suffix(".pt.tmp")
         torch.save(payload, tmp)
         tmp.replace(path)
+
+
+def _row_loss_components(
+    row: dict[str, Any],
+    tgt: dict[str, Any],
+    tcfg,
+) -> dict[str, float]:
+    """Unweighted per-component loss for ONE row (diagnostics only).
+
+    `_per_row_loss` folds every term into a single scalar, which is right for
+    ranking checkpoints but useless for asking WHY a validation loss moves. The
+    CLINC150 degradation could not be diagnosed from any run artifact because
+    this split was never recorded. Returns unweighted components; the total
+    still applies `loss_weights` / `score_ordinal_weight`.
+    """
+    from .losses import choice_loss, noul_loss, score_losses
+
+    out: dict[str, float] = {}
+    if row["type"] == "choice":
+        logits = torch.cat([row["logits"], row["abstain_logit"].reshape(1)]).unsqueeze(0)
+        idx = (logits.shape[-1] - 1) if tgt.get("abstain") else int(tgt["answer_index"])
+        out["choice"] = float(choice_loss(logits, torch.tensor([idx])))
+    elif row["type"] == "noul":
+        y = torch.tensor(float(tgt["answer"]))
+        out["noul"] = float(noul_loss(row["prob"].reshape(1), y.reshape(1)))
+    else:
+        y = torch.tensor(float(tgt["answer"]))
+        s = score_losses(row["probs"], row["centers"], y, tgt["min"], tgt["max"])
+        out["score"] = float(s["huber"])
+        out["ordinal"] = float(s["ordinal"])
+    out["calibration"] = float(
+        torch.nn.functional.binary_cross_entropy(
+            row["calibration"].reshape(1).clamp(1e-6, 1 - 1e-6),
+            torch.tensor([_correct(row, tgt)]),
+        )
+    )
+    return out
 
 
 def _per_row_loss(
