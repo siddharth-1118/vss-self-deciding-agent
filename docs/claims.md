@@ -404,9 +404,19 @@ replicates at three seeds**, and the stability asymmetry seen on Banking77
   larger than any seed noise observed on either dataset. Banking77's 2.3-point
   corrected gap is *not* far outside its noise — that comparison is the weaker
   of the two and should not be leaned on.
-* The CLINC150 architectural loss is **undiagnosed**. VSS degrades at 151 classes
-  where plain does not, and no tested hypothesis explains it. This is the most
-  likely reason VSS loses there, and it is unresolved.
+* The CLINC150 **eval-loss anomaly is diagnosed** (audit finding 8): it is the
+  calibration term, not a degrading choice head. Re-running seed 13 with the
+  per-component loss split recorded shows validation choice cross-entropy
+  falling monotonically (2.61 → 0.92) and accuracy rising every epoch
+  (0.465 → 0.735), while `comp_calibration` *rises* 0.96 → 1.61 as its training
+  counterpart falls to 0.014. The cause is that the calibration target is the
+  model's own correctness on the **training** forward pass, so the head learns
+  to say "confident" on a distribution it never meets at inference.
+* The CLINC150 **accuracy gap to plain is not diagnosed**. The structural fix
+  (compute the calibration target from a held-out or previous pass) is
+  identified but deliberately not implemented: with one seed's evidence it
+  would be a speculative change to what the model optimises. Seed-to-seed
+  instability (sd 0.052 vs plain's 0.006) is likewise still unexplained.
 
 ### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
 **Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the

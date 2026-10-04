@@ -134,14 +134,19 @@ unchanged. This reverses the earlier reading completely and is reported as found
   errors — the plain arm trained a *different task* (`header_only_choice`
   mismatch, D26), and both arms ran at a synthetic-derived learning rate with
   too small a budget. Correcting both puts plain at **0.9183**.
-* VSS peaks early and then degrades on 151 classes. At seed 13 its best was
-  **epoch 1** and eval loss rose 2.07 → 3.34 by epoch 3. The same shape recurs at
-  seeds 7 and 21: eval loss is non-monotonic (s7 `2.82 → 1.60 → 2.12 → 1.91`)
-  while accuracy keeps climbing past the loss minimum. This is a genuine
-  weakness at this label cardinality, not an artefact of the budget — plain's
-  curve was still improving at 2000 steps.
-* VSS is again the less stable of the two (sd 0.052 vs 0.006, spread 0.090 vs
-  0.010) — the same asymmetry seen on Banking77, now on a second dataset.
+* VSS peaks early and then degrades on 151 classes — **this reading was wrong,
+  and the cause is now measured.** See finding 8 in
+  [convergence_audit.md](convergence_audit.md): the degradation is visible in
+  `eval_loss`, not in the choice head. Re-running seed 13 with the per-component
+  loss split recorded shows validation choice cross-entropy falling monotonically
+  (2.61 → 0.92) and accuracy rising every epoch (0.465 → 0.735). The entire
+  non-monotonicity is `comp_calibration`, which rises 0.96 → 1.61, because the
+  calibration head is trained against the model's own correctness on the
+  *training* pass and learns to say "confident" on a distribution it never meets
+  at inference.
+* VSS is the less stable of the two across seeds (sd 0.052 vs 0.006, spread
+  0.090 vs 0.010) — the same asymmetry seen on Banking77, now on a second
+  dataset. That instability is **not** explained by finding 8.
 
 CLINC150 is therefore **no longer withdrawn as void**; it is now a *measured
 result in which VSS loses*, at three seeds. The previous withdrawal is retained
@@ -436,7 +441,6 @@ not over-read:
 * The gaps are not equally strong evidence. Banking77's 2.3-point corrected gap
   is close to the seed noise; CLINC150's 16.5-point gap is far outside it. The
   CLINC150 result is the strong one.
-* VSS is **not converged** on either dataset (§11.2). Its Banking77 numbers are
-  floors in one direction and its CLINC150 numbers are depressed by a genuine
-  optimisation pathology that has not been diagnosed. A better-tuned VSS could
-  move either number; nothing here forecloses that.
+* VSS is **not converged** on Banking77 (§11.2). Its CLINC150 eval-loss anomaly
+  is diagnosed as a calibration-target artifact rather than a choice-head failure
+  (audit finding 8); the accuracy gap to plain there remains unexplained.

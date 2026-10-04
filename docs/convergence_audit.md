@@ -9,7 +9,8 @@ and `audit_probe2.py`, and every defect is pinned by a regression test in
 
 **Outcome: 4 defects found, all fixed. Two of them (split leakage, warmup
 domination) invalidate part of the earlier multi-question value test and are the
-reason its synthetic numbers are being re-measured from scratch.**
+reason its synthetic numbers are being re-measured from scratch.** Findings 5-9
+were added later; see the individual entries.
 
 ---
 
@@ -24,6 +25,8 @@ reason its synthetic numbers are being re-measured from scratch.**
 | 5 | **CRITICAL** | epoch loop ignored the global step budget; post-budget epochs ran at `lr=0` and faked an early stop | real data only |
 | 6 | MODERATE | mid-epoch checkpoints wrote `history=[]`, wiping a resumed run's per-epoch records | real data only, resumed runs |
 | 7 | **MAJOR** | checkpoint selection used total eval **loss**, which for VSS includes calibration + ordinal terms that do not track choice accuracy | VSS on real data; cost up to 8 accuracy points |
+| 8 | **MAJOR** | calibration target is the model's own correctness on the *training* pass, so the head learns to say "confident" and its validation BCE **rises** while training BCE → 0 | VSS on real data; the entire CLINC150 eval-loss non-monotonicity |
+| 9 | MODERATE | an epoch that performed zero optimizer steps was still evaluated and recorded, duplicating the previous record | real-data run records |
 
 Findings 5 and 6 were found **after** the synthetic study was concluded, while
 re-running the real-data arms. Neither can appear in a short, uninterrupted run:
@@ -269,6 +272,81 @@ sd from 0.052 to 0.028.
 This is validation-based selection only: the test split is never consulted and no
 metric definition changes. The reported number is still choice accuracy on
 held-out data, now taken from the checkpoint validation says is best for it.
+
+### Finding 8 — MAJOR: the CLINC150 "degradation" is the calibration term, not the choice head
+
+This was the longest-standing open question in the project: VSS peaks early on
+CLINC150 and then gets worse while the plain baseline keeps improving. It could
+not be answered from any recorded run, because `combined_loss` returns a
+per-component split and the trainer kept only `parts["total"]`, while
+`evaluate_detailed` folded the same terms into one scalar per row. The split was
+computed and thrown away on every run.
+
+Components are now recorded (`comp_*` on the validation side, `train_*` on the
+training side) and `benchmarks/convergence/clinc_diag.py` re-runs the same
+configuration with them. Seed 13, lr 3e-4, 2000 steps, nothing else changed:
+
+| epoch | val choice acc | `comp_choice` | `comp_calibration` |
+|---:|---:|---:|---:|
+| 0 | 0.465 | 2.6144 | 1.0383 |
+| 1 | 0.610 | 1.1039 | 0.9637 |
+| 2 | 0.640 | 1.2273 | **1.2907** |
+| 3 | 0.695 | 1.0149 | **1.6734** |
+| 4 | 0.730 | 0.9263 | 1.5322 |
+| 5 | 0.735 | 0.9197 | 1.6068 |
+
+and on the training side both terms collapse to nothing:
+
+| epoch | `train_choice` | `train_calibration` | train total |
+|---:|---:|---:|---:|
+| 0 | 1.7846 | 0.5079 | 2.2925 |
+| 1 | 0.3100 | 0.2984 | 0.6084 |
+| 3 | 0.0344 | 0.0635 | 0.0978 |
+| 5 | 0.0121 | 0.0138 | 0.0259 |
+
+**The choice head improves monotonically and never degrades.** Validation choice
+cross-entropy falls 2.61 → 0.92 across the whole run and accuracy rises every
+epoch. The entire non-monotonicity of `eval_loss` is `comp_calibration`, which
+*rises* from 0.96 to 1.61 while the training-side equivalent falls to 0.014.
+
+**Root cause.** `correctness_targets()` labels each row with whether the model
+got *itself* right on the current training forward pass. Once the model fits the
+training set (choice accuracy → ~0.99) those labels become almost all 1.0, so
+the calibration head is optimised into saying "confident" — and it does, its
+training BCE reaching 0.014. At inference it meets a held-out distribution where
+accuracy is ~0.73, so that confidence is systematically wrong and the validation
+BCE climbs. The head is not diverging; it is faithfully reporting a target it
+can no longer match.
+
+Two consequences, both stated carefully:
+
+* **The "VSS peaks at epoch 1 then degrades" reading was an artifact.** It came
+  from `eval_loss`, whose epoch-1 minimum is this artifact (finding 7), and in
+  the recorded seeds from loss-based early stopping truncating the run. Run
+  without that truncation, seed 13 climbs to 0.735 at the last epoch.
+* **This does not make VSS competitive.** Plain still leads on CLINC150 at every
+  seed, and the calibration defect has a second, separate cost: it is a large
+  part of why VSS is *overconfident* off-distribution (§8 of the benchmark
+  report). Fixing the eval-loss confusion does not close the accuracy gap.
+
+The structural fix — computing the calibration target from a held-out or
+previous pass rather than the current one — is **not** made here. It changes
+what the model optimises, and with one seed's evidence it would be a
+speculative architectural change. It is recorded as the open item below.
+
+### Finding 9 — MODERATE: zero-work epochs were recorded as real epochs
+
+When the global step budget was exhausted, the trainer still ran a validation
+pass and appended a history record whose metrics duplicated the previous epoch
+exactly. On CLINC150 seeds 7 and 21 the trailing epoch took 2-3 s against
+~200 s for genuine ones and reproduced the prior `eval_loss` and
+`choice_accuracy` verbatim; it also incremented `epochs_without_improvement`, so
+early stopping could fire on evidence that could not have changed, and
+`epochs_run` over-reported by one.
+
+Reproduced on synthetic data before changing anything (6.9 s against 50 s, with
+`param_update_rel_mean` 8e-07, i.e. the weights did not move). An epoch that
+performed zero optimizer steps is now not recorded.
 
 ---
 

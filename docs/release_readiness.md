@@ -39,7 +39,7 @@ drives the verified end-to-end reference run in
 
 | Requirement | Evidence |
 |---|---|
-| Tests pass | `python -m pytest -q` — **148 passed, 1 skipped, 0 failed** (see §Evidence) |
+| Tests pass | `python -m pytest -q` — **194 passed, 1 skipped, 0 failed** (see §Evidence) |
 | Data integrity | `train ∩ test = 0` utterances on CLINC150 and Banking77, verified by inspection |
 | Label consistency | choice options enumerated per split; train uses 15 options, eval ranks the full label set — a deliberate, documented shift |
 | Masks | question-mask and padding-mask behaviour covered by `tests/test_question_mask.py` |
@@ -231,7 +231,7 @@ domain.
 
 | | |
 |---|---|
-| Tests | **148 passed**, 1 skipped (opt-in slow OOD test), 149 collected, 0 failed (`python -m pytest -q`) |
+| Tests | **194 passed**, 1 skipped (opt-in slow OOD test), 195 collected, 0 failed (`python -m pytest -q`) |
 | Fresh-clone verification | commit `92e50ca` in an empty directory: deps → data → train (`done`, 1093.52 s) → load → evaluate → example → CLI → REST |
 | Real-data tuning | 20 screen runs + 4 convergence-matched runs; all four LR optima bracketed |
 | Verified smoke run | `runs/smoke_verify`: status `done`, 1212 s, choice 0.9969 val, 0.99375 test accuracy, macro-F1 0.9928, ECE 0.0064 |
@@ -262,7 +262,8 @@ domain.
    early-stops on bad seeds and peaks on its final epoch on good ones, which
    points at the stopping rule interacting with the LR schedule rather than at
    data or capacity. Until that is understood, no single VSS number should be
-   quoted as expected performance.
+   quoted as expected performance. Two contributing *measurement* defects have
+   been fixed and are not the whole answer (audit findings 7 and 9).
 3. **Macro-F1 and per-class error analysis on real data are still not
    reported.** Risk-coverage *is* now measured on real data — `scripts/eval_ood.py`
    emits it for the CLINC150 checkpoint (`benchmarks/ood/vss-clinc150-s13.json`),
@@ -274,9 +275,14 @@ domain.
    out-of-domain deployment — an explicit novelty gate is needed before one is
    attempted.
 5. **VSS is behind the plain baseline on both real datasets** and the
-   architectural cause is not identified. The CLINC150 symptom (peak at epoch 1,
-   then degrade) is documented at three seeds but not explained. This is the main
-   research question the project now faces, and it argues firmly against scaling.
+   architectural cause is not identified. The CLINC150 *eval-loss* symptom is
+   now explained (audit finding 8: the calibration term, whose target is the
+   model's own training-pass correctness, so it learns to say "confident"); the
+   accuracy gap itself is not. The identified structural fix — deriving the
+   calibration target from a held-out or previous pass — is **not implemented**,
+   because one seed of evidence does not license a change to what the model
+   optimises. This is the main research question the project now faces, and it
+   argues firmly against scaling.
 
 ## Why research preview rather than release
 
