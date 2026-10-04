@@ -256,12 +256,15 @@ needed (`python benchmarks/convergence/seed_table.py`):
 |---|---|---:|---:|
 | Banking77 | plain | 0.8783 (sd 0.0076) | **0.8883** (sd 0.0058) |
 | Banking77 | VSS | 0.8300 (sd 0.0650) | **0.8650** (sd 0.0265) |
-| CLINC150 | VSS | 0.6750 | **0.7300** |
+| CLINC150 | plain | 0.9183 (sd 0.0058) | **0.9233** (sd 0.0076) |
+| CLINC150 | VSS | 0.7050 (sd 0.0520) | **0.7583** (sd 0.0275) |
 
 Roughly half of VSS's Banking77 deficit and most of its seed instability were
 its own selection rule. **The headline verdict does not change** — plain still
 leads both datasets — but the gap is smaller and better understood, and the
-stability claim needed qualifying.
+stability claim needed qualifying. CLINC150 shows the same pattern: the rule cost
+VSS 5.3 points there (0.7050 → 0.7583) against plain's 0.5, and reduced its seed
+sd from 0.052 to 0.028.
 
 This is validation-based selection only: the test split is never consulted and no
 metric definition changes. The reported number is still choice accuracy on

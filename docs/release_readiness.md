@@ -2,23 +2,29 @@
 
 **Decision: RESEARCH PREVIEW.** Not release-ready. All engineering, training and
 scope gates now pass; **Gate C (evaluation integrity) is PROVISIONAL** because
-CLINC150 and the synthetic benchmark are still single-seed. This is a deliberate,
-labelled release of working software with honest evidence, not a claim that every
-question is settled.
+the synthetic benchmark is still single-seed. This is a deliberate, labelled
+release of working software with honest evidence, not a claim that every question
+is settled.
 
 **What the evidence now says about the model itself** (convergence-matched,
-per-dataset tuned, validation-selected):
+per-dataset tuned, validation-selected, three seeds each):
 
 | dataset | n | VSS | plain classifier | outcome |
 |---|---:|---|---|---|
 | Banking77 (77 classes) | 3 | 0.8300 (sd 0.065) | **0.8783** (sd 0.008) | plain +4.8 pts |
-| CLINC150 (151 classes) | 1 | 0.675 | **0.915** | plain +24.0 pts |
+| CLINC150 (151 classes) | 3 | 0.7050 (sd 0.052) | **0.9183** (sd 0.006) | plain +21.3 pts |
+
+Under the corrected checkpoint-selection rule (validation accuracy rather than
+eval loss, finding 7), re-reading the same recorded histories: Banking77
+**0.8650 vs 0.8883** (plain +2.3), CLINC150 **0.7583 vs 0.9233** (plain +16.5).
+The sign of the comparison does not change under either rule.
 
 This is not a model that has been shown to beat its baseline. On the evidence
 available **the plain classifier is better on both real datasets**, and VSS is
-roughly 8.5× less stable across seeds (spread 0.130 vs 0.015). A single-seed
-run would have said the opposite on Banking77 — VSS scored 0.895 at seed 13 and
-0.765 at seed 7 — which is precisely why the multi-seed requirement existed.
+markedly less stable across seeds on both (spread 0.130 vs 0.015 on Banking77,
+0.090 vs 0.010 on CLINC150). A single-seed run would have said the opposite on
+Banking77 — VSS scored 0.895 at seed 13 and 0.765 at seed 7 — which is precisely
+why the multi-seed requirement existed.
 
 The model is not scaled. Every result below is at the current ~11M-parameter
 (concretely: **11,164,483** for the benchmark configuration used by the
@@ -33,7 +39,7 @@ drives the verified end-to-end reference run in
 
 | Requirement | Evidence |
 |---|---|
-| Tests pass | `python -m pytest -q` — **136 passed, 1 skipped, 0 failed** (see §Evidence) |
+| Tests pass | `python -m pytest -q` — **148 passed, 1 skipped, 0 failed** (see §Evidence) |
 | Data integrity | `train ∩ test = 0` utterances on CLINC150 and Banking77, verified by inspection |
 | Label consistency | choice options enumerated per split; train uses 15 options, eval ranks the full label set — a deliberate, documented shift |
 | Masks | question-mask and padding-mask behaviour covered by `tests/test_question_mask.py` |
@@ -66,7 +72,7 @@ the earlier failures are fixed.
 | Requirement | Status |
 |---|---|
 | Test isolation from selection | **Verified** — test is never read for LR, threshold, or stopping decisions |
-| Per-seed reporting | **PARTIAL** — Banking77 has **3 seeds per system** (a real variance estimate). CLINC150 and synthetic remain single-seed. |
+| Per-seed reporting | **PARTIAL** — Banking77 **and CLINC150** now have **3 seeds per system** (real variance estimates on both). Synthetic remains single-seed. |
 | Metric definitions | Documented; validation *loss* explicitly excluded from cross-system comparison (VSS's contains a calibration BCE and soft-ordinal term the plain loss lacks) |
 | Macro-F1 | Implemented and reported for the verified smoke run (0.9928 synthetic); **not yet reported** for the real-data runs |
 | Reproducibility of new runs | Each run carries a manifest with config hash, git commit, dirty flag, splits, params, pid, timestamps, and explicit `done`/`failed` status |
@@ -93,13 +99,14 @@ class index in training and inference.
 **Consequence:** every real-data comparison made before this fix was void,
 because the plain arm was training a different task. They have been re-run.
 
-**Why still PROVISIONAL:** CLINC150 and the synthetic benchmark rest on one seed
-each. Banking77's three seeds are what overturned the earlier single-seed
-reading, so treating the remaining single-seed numbers as settled would repeat
-the exact error this audit exists to catch.
+**Why still PROVISIONAL:** the synthetic benchmark rests on one seed. Both real
+datasets now have three seeds each, but Banking77's three seeds are what
+overturned the earlier single-seed reading, so treating the remaining
+single-seed synthetic number as settled would repeat the exact error this audit
+exists to catch.
 
-A measured variance estimate now exists: **sd 0.008 (plain) and 0.065 (VSS) on
-Banking77.**
+Measured variance estimates now exist on both real datasets: **Banking77 sd
+0.008 (plain) / 0.065 (VSS)**, **CLINC150 sd 0.006 / 0.052**.
 
 ## Gate D — Functional completeness: **PASS**
 
@@ -186,7 +193,7 @@ domain.
 
 | | |
 |---|---|
-| Tests | **136 passed**, 1 skipped (opt-in slow OOD test), 137 collected, 0 failed (`python -m pytest -q`) |
+| Tests | **148 passed**, 1 skipped (opt-in slow OOD test), 149 collected, 0 failed (`python -m pytest -q`) |
 | Fresh-clone verification | commit `92e50ca` in an empty directory: deps → data → train (`done`, 1093.52 s) → load → evaluate → example → CLI → REST |
 | Real-data tuning | 20 screen runs + 4 convergence-matched runs; all four LR optima bracketed |
 | Verified smoke run | `runs/smoke_verify`: status `done`, 1212 s, choice 0.9969 val, 0.99375 test accuracy, macro-F1 0.9928, ECE 0.0064 |
@@ -203,21 +210,21 @@ domain.
 |---|---|
 | A — legacy checkpoints / evaluation discrepancy | **RESOLVED.** Root cause: `header_only_choice` was read from the model config by VSS but from the question object by plain, and `AnsweredQuestion` has no such field, so plain silently trained the *full-inventory CE* task while VSS trained the header-only task. Same checkpoint, same data, only that flag: **0.8900 vs 0.0750**. The checkpoints were always sound; the measurement was wrong. Fix + 11 parity tests in `tests/test_plain_header_only_parity.py`. |
 | B — per-dataset LR tuning for both architectures | **DONE.** 20-run screen; all four optima bracketed. |
-| C — fair convergence-matched real-data comparison | **DONE** — per-dataset tuned LRs, 2000 steps, **3 seeds on Banking77**, CLINC150 seeds in progress. The result is negative for VSS on both datasets. |
+| C — fair convergence-matched real-data comparison | **DONE** — per-dataset tuned LRs, 2000 steps, **3 seeds on both real datasets**. The result is negative for VSS on both. |
 | D — decision-specific behaviour | **DONE.** Heads, schemas, isolation, permutation, calibration and selective prediction exercised; the OOD-abstention claim was measured and withdrawn (D27). |
 | E — fresh-environment verification | **DONE.** Full documented chain executed in a clean `git clone` at `92e50ca`; see Gate D. |
 
 ## Remaining blockers
 
-1. **CLINC150 and synthetic are single-seed.** Banking77's three seeds are what
-   overturned the earlier reading, so these cannot be treated as settled. The
-   queued runs are resumable: `python benchmarks/convergence/sweep.py --plan
-   real_final --seeds 7 21 --steps 2000`.
-2. **VSS is unstable across seeds** (0.765–0.895 on Banking77) and the cause is
-   undiagnosed. It early-stops on bad seeds and peaks on its final epoch on good
-   ones, which points at the stopping rule interacting with the LR schedule
-   rather than at data or capacity. Until that is understood, no single VSS
-   number should be quoted as expected performance.
+1. **Synthetic is single-seed.** Banking77's three seeds are what overturned the
+   earlier reading, so the synthetic tie cannot be treated as settled. Both real
+   datasets are now at three seeds.
+2. **VSS is unstable across seeds on both real datasets** (0.765–0.895 on
+   Banking77, 0.675–0.765 on CLINC150) and the cause is undiagnosed. It
+   early-stops on bad seeds and peaks on its final epoch on good ones, which
+   points at the stopping rule interacting with the LR schedule rather than at
+   data or capacity. Until that is understood, no single VSS number should be
+   quoted as expected performance.
 3. **Macro-F1, per-class error analysis and risk-coverage on real data are not
    reported** — they exist only for the verified synthetic run.
 4. **OOD abstention does not work** (D27). A product limitation rather than a
@@ -225,8 +232,8 @@ domain.
    novelty gate is needed before one is attempted.
 5. **VSS is behind the plain baseline on both real datasets** and the
    architectural cause is not identified. The CLINC150 symptom (peak at epoch 1,
-   then degrade) is documented but not explained. This is the main research
-   question the project now faces, and it argues firmly against scaling.
+   then degrade) is documented at three seeds but not explained. This is the main
+   research question the project now faces, and it argues firmly against scaling.
 
 ## Why research preview rather than release
 

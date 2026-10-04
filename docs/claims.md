@@ -18,7 +18,7 @@ accuracy claim is **Provisional** or **Withdrawn**. See
 | Engineering invariants (permutation invariance, question isolation, run isolation, schema validation) | **Supported** |
 | Synthetic convergence + tie vs baseline | **Provisional** (1 seed) |
 | Banking77 VSS 0.8300 vs plain 0.8783 (3 seeds) | **Demonstrated (3 seeds)** — plain ahead 4.8 pts; VSS ~8.5× less stable (D28) |
-| CLINC150 plain 0.915 vs VSS 0.675 | **Demonstrated (1 seed)** — plain ahead 24 pts; awaiting seeds 7/21 (D28) |
+| CLINC150 plain 0.9183 vs VSS 0.7050, 3 seeds | **Demonstrated (3 seeds)** — plain ahead 21.3 pts; 16.5 under the corrected selection rule (D28) |
 | Legacy plain checkpoints | **Supported** — reproduce at 0.9400 test accuracy (D26, resolved) |
 | "Plain beats VSS in 35/35 cells" | **Withdrawn** |
 | Latency advantage vs batched baseline | **Provisional** (single contended session) |
@@ -347,7 +347,18 @@ selection, accuracy read at the selected (lowest-loss) checkpoint. Rendered by
 | dataset | n | VSS | plain | delta |
 |---|---:|---|---|---:|
 | Banking77 | **3** | 0.8300 (sd 0.0650) | **0.8783** (sd 0.0076) | **plain +4.8 pts** |
-| CLINC150 | 1 | 0.6750 | **0.9150** | **plain +24.0 pts** |
+| CLINC150 | **3** | 0.7050 (sd 0.0520) | **0.9183** (sd 0.0058) | **plain +21.3 pts** |
+
+Under the corrected selection rule (finding 7: validation accuracy, loss as
+tie-break) re-reading the same recorded histories:
+
+| dataset | n | VSS | plain | delta |
+|---|---:|---|---|---:|
+| Banking77 | 3 | 0.8650 (sd 0.0265) | **0.8883** (sd 0.0058) | **plain +2.3 pts** |
+| CLINC150 | 3 | 0.7583 (sd 0.0275) | **0.9233** (sd 0.0076) | **plain +16.5 pts** |
+
+The gap narrows under the corrected rule on both datasets, but the sign never
+changes.
 
 **Banking77 reversed under multi-seed, and that is the important part of this
 claim.** At seed 13 VSS scored 0.895 against plain's 0.870 — a nominal 2.5-point
@@ -366,12 +377,16 @@ VSS spans 0.765–0.895 (spread 0.130); plain spans 0.870–0.885 (spread 0.015)
 **VSS is roughly 8.5× less stable run to run**, and its best single seed
 (0.895) exceeds plain's best seed (0.885).
 
-On CLINC150, VSS peaks at **epoch 1** and then degrades (eval 2.07 → 3.34 by
-epoch 3) — a genuine weakness at 151 classes, not an under-trained artefact,
-since plain's curve was still improving at 2000 steps. For three audit cycles
-the record said "VSS 0.700 vs plain 0.000"; that was wrong in two compounding
-ways (the plain arm trained a different task per D26, and both arms ran a
-synthetic-derived LR at too small a budget). Corrected, plain reaches 0.915.
+On CLINC150, VSS peaks early and then degrades — at seed 13 its best was **epoch 1**
+and eval loss rose 2.07 → 3.34 by epoch 3; seeds 7 and 21 show the same
+non-monotonic eval loss against still-climbing accuracy. This is a genuine
+weakness at 151 classes, not an under-trained artefact, since plain's curve was
+still improving at 2000 steps. For three audit cycles the record said
+"VSS 0.700 vs plain 0.000"; that was wrong in two compounding ways (the plain arm
+trained a different task per D26, and both arms ran a synthetic-derived LR at too
+small a budget). Corrected, plain reaches 0.9183. **The CLINC150 verdict also now
+replicates at three seeds**, and the stability asymmetry seen on Banking77
+(sd 0.052 vs 0.006, spread 0.090 vs 0.010) appears on a second dataset.
 
 **Consequences.**
 * CLINC150 moves from VOID to **measured, and measured against VSS**. D25 is
@@ -385,9 +400,13 @@ synthetic-derived LR at too small a budget). Corrected, plain reaches 0.915.
   VSS reached 0.895 at seed 13, above plain's best seed. The finding is that VSS
   does not *reliably* reach its own best case — a reliability problem, which is
   a different and more tractable one than a capability gap.
-* CLINC150 remains single-seed; seeds 7 and 21 are queued. Its 24-point gap is
-  far larger than the ~2-point noise Banking77 exhibited, so a reversal there is
-  unlikely, but it is one seed.
+* CLINC150 is now **three seeds**, and its 21.3-point gap (16.5 corrected) is far
+  larger than any seed noise observed on either dataset. Banking77's 2.3-point
+  corrected gap is *not* far outside its noise — that comparison is the weaker
+  of the two and should not be leaned on.
+* The CLINC150 architectural loss is **undiagnosed**. VSS degrades at 151 classes
+  where plain does not, and no tested hypothesis explains it. This is the most
+  likely reason VSS loses there, and it is unresolved.
 
 ### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
 **Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the

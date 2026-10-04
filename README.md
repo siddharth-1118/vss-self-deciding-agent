@@ -96,8 +96,8 @@ Full environment, dataset preparation, tuning and evaluation commands:
 
 **Research preview (v0.1.0).** The software works end to end, the training
 protocol is tuned and converged, and the engineering invariants are tested. It is
-held back from release by one thing: **CLINC150 and the synthetic benchmark are
-still single-seed**, and on the dataset that does have three seeds the plain
+held back from release by one thing: **the synthetic benchmark is still
+single-seed**, and on both real datasets — each now at three seeds — the plain
 baseline is ahead.
 
 VSS has **not** been shown to beat a plain classifier — and on the evidence
@@ -107,13 +107,14 @@ learning rates, validation-selected checkpoints:
 | dataset | n | VSS | plain | outcome |
 |---|---:|---|---|---|
 | Banking77 (77 classes) | 3 | 0.8300 (sd 0.065) | **0.8783** (sd 0.008) | plain +4.8 pts |
-| CLINC150 (151 classes) | 1 | 0.675 | **0.915** | plain +24.0 pts |
+| CLINC150 (151 classes) | 3 | 0.7050 (sd 0.052) | **0.9183** (sd 0.006) | plain +21.3 pts |
 
-VSS is also **much less stable across seeds** — 0.765 to 0.895 on Banking77,
-against plain's 0.870 to 0.885. A single-seed run of VSS on Banking77 scored
-0.895, above plain's best seed; at another seed it scored 0.765. If you are
-choosing a model for real-data intent classification, the honest recommendation
-from this evidence is the plain classifier.
+VSS is also **much less stable across seeds** — 0.765 to 0.895 on Banking77
+against plain's 0.870 to 0.885, and 0.675 to 0.765 on CLINC150 against plain's
+0.915 to 0.925. A single-seed run of VSS on Banking77 scored 0.895, above
+plain's best seed; at another seed it scored 0.765. If you are choosing a model
+for real-data intent classification, the honest recommendation from this evidence
+is the plain classifier.
 
 Two further measured limitations: VSS's best checkpoint lands on the final epoch
 where it is not stopped early (its numbers are floors, not ceilings), and

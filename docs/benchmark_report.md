@@ -65,6 +65,23 @@ matched steps are also matched presentations.
 **The plain baseline leads by 4.8 points on the mean, and VSS is roughly 8.5×
 less stable across seeds** (sd 0.065 vs 0.008; spread 0.130 vs 0.015).
 
+These runs were selected by the minimum-loss rule that the trainer used at the
+time. Finding 7 ([convergence_audit.md](convergence_audit.md)) established that
+this rule systematically mis-selects VSS, whose loss carries calibration and
+ordinal terms that do not track choice accuracy. Re-reading the *same recorded
+histories* under the corrected rule — validation accuracy, loss as tie-break —
+that the code now uses by default:
+
+| system | loss-selected | accuracy-selected (corrected) | sd |
+|---|---:|---:|---:|
+| **plain** | 0.8783 | **0.8883** | 0.0058 |
+| VSS | 0.8300 | **0.8650** | 0.0265 |
+
+So the deficit narrows from 4.8 to 2.3 points, and VSS's seed instability falls
+from sd 0.065 to 0.027. **Plain still leads under both rules**, which is why the
+verdict is unchanged — but the corrected numbers are the ones the shipped code
+would produce, and the "8.5× less stable" figure applies to the old rule only.
+
 This reverses what the single-seed result said. At seed 13 VSS scored 0.895
 against plain's 0.870 — a nominal 2.5-point lead — and an earlier draft of this
 report recorded it as a VSS win. Seeds 7 and 21 show that was **seed luck**: VSS
@@ -90,74 +107,76 @@ Rendered by `python benchmarks/convergence/seed_table.py`.
 ## 4. Real data — CLINC150 — **the plain baseline wins**
 
 2000-step budget, each system at its own screened learning rate (plain **1e-3**,
-VSS **3e-4** — they genuinely disagree here), validation-only selection, seed 13.
+VSS **3e-4** — they genuinely disagree here), validation-only selection,
+**three seeds (7, 13, 21)**.
 
-| system | steps | epochs | best epoch | early stop | choice acc | wall s |
-|---|---:|---:|---:|---|---:|---:|
-| VSS | 1665 | 5 | 1 | yes (genuine) | 0.675 | 1061 |
-| **plain** | 2000 | 7 | 5 | budget exhausted | **0.915** | 1205 |
+| system | n | per-seed | mean | sd | spread | wall s |
+|---|---:|---|---:|---:|---:|---:|
+| **plain** | 3 | 0.925 / 0.915 / 0.915 | **0.9183** | 0.0058 | 0.010 | 1019 |
+| VSS | 3 | 0.765 / 0.675 / 0.675 | 0.7050 | 0.0520 | 0.090 | 1402 |
 
-**The plain classifier beats VSS on CLINC150 by 24 points.** This reverses the
-earlier reading completely and is reported as found:
+**The plain classifier beats VSS on CLINC150 by 21.3 points on the mean**, and
+by 16.5 points under the corrected selection rule below. Both systems ran three
+seeds, so this is no longer a single-seed result.
+
+Under the corrected rule (validation accuracy, loss as tie-break — what the code
+now does by default, finding 7), re-reading the same recorded histories:
+
+| system | loss-selected | accuracy-selected (corrected) | sd |
+|---|---:|---:|---:|
+| **plain** | 0.9183 | **0.9233** | 0.0076 |
+| VSS | 0.7050 | **0.7583** | 0.0275 |
+
+The gap narrows from 21.3 to 16.5 points but does not close, and the sign is
+unchanged. This reverses the earlier reading completely and is reported as found:
 
 * The earlier "VSS 0.700 vs plain 0.000" was an artefact of two compounding
   errors — the plain arm trained a *different task* (`header_only_choice`
   mismatch, D26), and both arms ran at a synthetic-derived learning rate with
-  too small a budget. Correcting both puts plain at **0.915**.
-* VSS early-stops at epoch 5 with its best at **epoch 1**: it peaks almost
-  immediately and then degrades on 151 classes (epoch 1 eval 2.07 → epoch 3
-  3.34). This is a genuine weakness at this label cardinality, not an artefact
-  of the budget — plain's curve was still improving at 2000 steps.
+  too small a budget. Correcting both puts plain at **0.9183**.
+* VSS peaks early and then degrades on 151 classes. At seed 13 its best was
+  **epoch 1** and eval loss rose 2.07 → 3.34 by epoch 3. The same shape recurs at
+  seeds 7 and 21: eval loss is non-monotonic (s7 `2.82 → 1.60 → 2.12 → 1.91`)
+  while accuracy keeps climbing past the loss minimum. This is a genuine
+  weakness at this label cardinality, not an artefact of the budget — plain's
+  curve was still improving at 2000 steps.
+* VSS is again the less stable of the two (sd 0.052 vs 0.006, spread 0.090 vs
+  0.010) — the same asymmetry seen on Banking77, now on a second dataset.
 
 CLINC150 is therefore **no longer withdrawn as void**; it is now a *measured
-result in which VSS loses*. The previous withdrawal is retained below as history,
-because the specific error it recorded (a broken baseline presented as a
-comparison) is worth not reintroducing.
+result in which VSS loses*, at three seeds. The previous withdrawal is retained
+below as history, because the specific error it recorded (a broken baseline
+presented as a comparison) is worth not reintroducing.
 
-At 1200 steps the plain baseline **failed**: train loss 1.66 → 0.03 while
-validation loss *rose* 4.53 → 5.95 and choice accuracy fell to **0.000**.
+#### How the collapse was found and fixed (history, superseded)
 
-A per-dataset LR screen was run to find out why (`--plan lr_screen_real`):
+At 1200 steps the plain baseline **failed outright**: train loss 1.66 → 0.03
+while validation loss *rose* 4.53 → 5.95 and choice accuracy fell to **0.000**.
+That produced an intermediate reading — "VSS 0.700 vs plain 0.000" — which was
+withdrawn because a baseline sitting at chance is not a baseline.
 
-| system | LR | best val loss | choice acc | grad norm |
-|---|---:|---:|---:|---:|
-| VSS | 3e-5 | 5.3050 | 0.015 | 2.1 |
-| VSS | 1e-4 | 4.5223 | 0.305 | 3.4 |
-| VSS | 3e-4 | **2.8791** | 0.575 | 2.7 |
-| plain | 3e-5 | 5.2541 | 0.000 | 12.5–15.7 |
-| plain | 1e-4 | 5.2100 | 0.000 | 8.5–9.6 |
-| plain | 3e-4 | 4.1142 | 0.120 | — |
-| plain | 1e-3 | **2.9824** | 0.195 | — |
+Two causes, both real, both fixed:
 
-All rows are read directly from `benchmarks/convergence/runs/*-screen.json`;
-each was verified against the file rather than transcribed by hand.
+1. **The plain arm was training a different task** (D26). `header_only_choice`
+   was read from the model config by VSS but from the question object by plain;
+   real data never sets it, so plain silently trained full-inventory CE against
+   VSS's header-only objective.
+2. **One learning rate for every dataset.** 3e-4 was selected on synthetic and
+   applied to CLINC150. A per-dataset screen (below, §5) shows the plain
+   baseline's optimum on CLINC150 is 1e-3, where it reaches 0.815, not 0.000.
 
-**Correction to an earlier reading of this screen.** The first three plain runs
-(3e-5, 1e-4, 3e-4) suggested the collapse was *not* an LR effect, since two
-lower LRs were also at chance. The completed screen refutes that: plain improves
-**monotonically** across the whole grid — 0.000 / 0.000 / 0.120 / 0.195
-accuracy — and the best point sits at the **top edge** of the grid, not at an
-interior optimum. The screen therefore did not bracket the plain baseline's
-optimum; it is simply under-tuned, and 3e-3 has been added to the grid to close
-the bracket.
+An earlier revision of this section also blamed a **train/eval option-schema
+gap** — 15 declared options per training example versus 151 labels ranked at
+evaluation — and claimed VSS's option-slot projection transferred where the
+plain pooled choice head could not. **That explanation is refuted by the
+corrected result.** Both arms train on the same 15-option examples; the plain
+baseline reaches 0.9183 under the corrected protocol, so the gap is not what
+separates them. The explanation is recorded here rather than deleted because it
+was stated with confidence and was wrong.
 
-So both hypotheses remain live and are **not separated by this experiment**:
-the 15-option-train → 151-option-eval transfer, and an LR chosen on a different
-dataset. Either way the baseline is mis-tuned relative to VSS (0.195 vs 0.575),
-and no ranking claim is licensed.
-
-The substantive explanation is the **train/eval option-schema gap**: every
-training example declares 15 options (gold + 14 distractors), so the choice head
-only ever learns to discriminate within a 15-way subset. CLINC150 evaluation
-ranks all **151** labels. VSS's option-slot projection appears to transfer to
-unseen option sets; the plain classifier's pooled choice head does not, at this
-budget.
-
-**This comparison is still withdrawn.** A baseline that reaches 0.195 while a
-tuned model reaches 0.575 — with the baseline's best LR still at the edge of the
-screened grid — is a mis-tuned arm, not a credible ranking. The baseline needs
-(a) a bracketing LR search and (b) a protocol that trains it across the full
-label set, before any architectural conclusion can be drawn.
+The screen numbers that originally supported the withdrawn reading were taken
+from a **partial, pre-fix screen** and are superseded by the complete 20-run
+screen in §5. They are not reproduced here.
 
 ## 5. Learning-rate screen (per dataset, validation only)
 
@@ -313,14 +332,17 @@ fully reproducible artifact here.
 
 ## 11. Limitations that constrain every number above
 
-1. **Three seeds on Banking77, one elsewhere.** Banking77 has a real variance
-   estimate (§3) — sd 0.008 (plain) and 0.065 (VSS). CLINC150 and synthetic are
-   still single-seed, and CLINC150's gap is large enough that one seed is
-   unlikely to hide a reversal, but it remains one seed.
-2. **VSS is not converged on either real dataset.** Its best checkpoint lands on
-   the final epoch when not stopped early, so its numbers are floors, not
-   ceilings — and the early-stop-on-bad-seeds behaviour means the floor is
-   seed-dependent. Plain's CLINC150 curve was still improving at 2000 steps.
+1. **Three seeds on both real datasets; synthetic is still one seed.** Both real
+   comparisons now have a real variance estimate (§3, §4) — Banking77 sd 0.008
+   (plain) / 0.065 (VSS), CLINC150 sd 0.006 / 0.052. The synthetic benchmark
+   (§2) remains single-seed and every conclusion drawn from it carries that.
+2. **VSS is not converged on either real dataset.** On Banking77 its best
+   checkpoint lands on the final epoch when not stopped early, so its numbers are
+   floors, not ceilings — and the early-stop-on-bad-seeds behaviour means the
+   floor is seed-dependent. On CLINC150 it degrades after an early peak while
+   plain's curve is still improving at 2000 steps. That optimisation pathology is
+   **undiagnosed**: no hypothesis tested so far explains why VSS degrades at 151
+   classes, and it is the most likely reason VSS scores below plain there.
 3. **Validation slices are 200 examples** (`sweep.VAL_SLICE`). A 2.5-point
    difference on n=200 is roughly 5 examples, which is exactly why the 2.5-point
    seed-13 Banking77 gap did not survive three seeds.
@@ -333,32 +355,36 @@ fully reproducible artifact here.
    deliberate distribution shift is part of what the plain baseline handles well
    on CLINC150 (§4).
 8. **Synthetic results do not predict real-data results.** The synthetic tie
-   (§2) coexisted with a 24-point real-data loss (§4) and a 2.5-point real-data
-   win (§3). Neither direction generalises from one to the other.
+   (§2) coexisted with losses on *both* real datasets (§3, §4). Neither
+   direction generalises from one to the other.
 
 ## 12. What the evidence supports, stated plainly
 
 | comparison | verdict |
 |---|---|
-| VSS vs plain, Banking77, 2000 steps, **3 seeds** | **plain +4.8 pts** (0.8783 vs 0.8300). VSS also ~8.5× less stable across seeds. |
-| VSS vs plain, CLINC150, 2000 steps, 1 seed | **plain +24.0 pts.** Single seed, but the gap is far outside the seed noise measured on Banking77. |
+| VSS vs plain, Banking77, 2000 steps, **3 seeds** | **plain +4.8 pts** (0.8783 vs 0.8300); **+2.3 pts** under the corrected selection rule (0.8883 vs 0.8650). |
+| VSS vs plain, CLINC150, 2000 steps, **3 seeds** | **plain +21.3 pts** (0.9183 vs 0.7050); **+16.5 pts** corrected (0.9233 vs 0.7583). |
 | VSS vs plain, synthetic, matched exposure | Tie (§2), one seed. |
 | Synthetic → real generalisation | **No.** §2 ties while both real datasets go against VSS. |
-| Stability | **plain is stable, VSS is not** — 0.015 vs 0.130 spread on identical settings. |
+| Stability | **plain is stable, VSS is not** — and this now replicates on both real datasets (spread 0.015 vs 0.130 on Banking77; 0.010 vs 0.090 on CLINC150). |
 
 **The honest summary: on this evidence the plain baseline is better on both real
-datasets, and VSS is markedly less reliable run to run.** VSS is not shown to
-beat the baseline anywhere; its only measured advantages remain synthetic —
-a tie at matched exposure, informative selective prediction (D22), and
-single-pass latency against a *batched* baseline (D14).
+datasets at three seeds each, and VSS is markedly less reliable run to run.** VSS
+is not shown to beat the baseline anywhere; its only measured advantages remain
+synthetic — a tie at matched exposure, informative selective prediction (D22),
+and single-pass latency against a *batched* baseline (D14).
 
-Two things this does **not** establish, kept explicit so the negative result is
+Three things this does **not** establish, kept explicit so the negative result is
 not over-read:
 
 * It does not prove VSS is a worse *architecture*. Its parameterisation and
-  training path were corrected only recently, and at seed 13 it reached 0.895 —
-  above plain's best seed. The finding is that VSS currently *does not reliably*
-  reach its own best case.
-* CLINC150 is one seed. Banking77's 3-seed result is the stronger evidence, and
-  the remaining CLINC150 seeds are queued. Treat the Banking77 number as "promising,
-unproven" and the CLINC150 number as "established".
+  training path were corrected only recently, and its best single seed exceeds
+  plain's best seed on Banking77 (0.895 vs 0.885). The finding is that VSS
+  currently *does not reliably* reach its own best case.
+* The gaps are not equally strong evidence. Banking77's 2.3-point corrected gap
+  is close to the seed noise; CLINC150's 16.5-point gap is far outside it. The
+  CLINC150 result is the strong one.
+* VSS is **not converged** on either dataset (§11.2). Its Banking77 numbers are
+  floors in one direction and its CLINC150 numbers are depressed by a genuine
+  optimisation pathology that has not been diagnosed. A better-tuned VSS could
+  move either number; nothing here forecloses that.
