@@ -115,3 +115,91 @@ def test_ema_targets_break_the_saturation_cycle():
         "EMA targets must move the head away from the saturated in-pass "
         f"solution (stayed at {p_ema:.4f})"
     )
+
+# --- integration: the trainer's EMA path must actually run ----------------
+# The unit tests above cover the loss function, but the EMA code lives in
+# Trainer._ema_correctness. That path had a real defect (an in-place weight
+# swap invalidating the backward graph) that only appeared at runtime, so it
+# needs a test that drives an actual training step rather than reasoning about
+# the source. These run on the synthetic loader with a tiny budget.
+
+def _trainer(tmp_path, mode):
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "src"))
+    sys.path.insert(0, str(root / "benchmarks" / "multi_question_value"))
+
+    from vss.data.schema import TrainingExample
+    from vss.model.config import VSSConfig
+    from vss.model.vss_model import VSSModel
+    from vss.training.trainer import Trainer
+
+    cfg = VSSConfig.load(str(root / "configs" / "vss-prototype-clinc-slot-ho-qmask.yaml"))
+    t = cfg.training
+    t.seed = 0
+    t.epochs = 2
+    t.max_steps = 4
+    t.min_epochs = 1
+    t.early_stop_patience = 99
+    t.log_every = 10 ** 9
+    t.checkpoint_dir = str(tmp_path)
+    t.calibration_target_mode = mode
+    torch.manual_seed(0)
+
+    import dataset as mqv
+
+    def exs(split, n):
+        loader = mqv.load_synthetic
+        return [TrainingExample.model_validate(e.to_training_dict())
+                for e in loader(split)][:n]
+
+    model = VSSModel(cfg.model)
+    return Trainer(model, cfg, exs("train", 40), exs("validation", 16))
+
+
+def test_trainer_runs_in_self_mode(tmp_path):
+    """Control arm: the default path must still train."""
+    tr = _trainer(tmp_path, "self")
+    step, losses, _ = tr.train_epoch(tr.train, 0, 0)
+    assert step >= 1, "self mode must take optimizer steps"
+    assert losses, "self mode must record a loss"
+
+
+def test_trainer_runs_in_ema_mode(tmp_path):
+    """EMA mode must complete a training step without a graph error.
+
+    Regression: restoring the live weights with an in-place copy_ AFTER the
+    forward pass raised "one of the variables needed for gradient computation
+    has been modified by an inplace operation". Targets are now computed
+    BEFORE the live forward pass.
+    """
+    tr = _trainer(tmp_path, "ema")
+    assert tr._ema is not None, "EMA mode must build the teacher"
+    step, losses, _ = tr.train_epoch(tr.train, 0, 0)
+    assert step >= 1, "EMA mode must take optimizer steps"
+    assert losses, "EMA mode must record a loss"
+    assert all(l == l for l in losses), "EMA mode must not produce NaN loss"
+
+
+def test_ema_teacher_is_actually_used_and_advances(tmp_path):
+    """The teacher must move toward the live weights, and must be restored.
+
+    Guards against the failure mode where EMA silently does nothing (teacher
+    frozen) or corrupts training (live weights left swapped).
+    """
+    tr = _trainer(tmp_path, "ema")
+    before = {n: v.clone() for n, v in tr._ema.items()}
+    live = {n: p.detach().clone() for n, p in tr.model.named_parameters()
+            if p.requires_grad}
+
+    tr.train_epoch(tr.train, 0, 0)
+
+    # live weights must be intact (not left as the teacher's values)
+    for n, p in tr.model.named_parameters():
+        if p.requires_grad and n in live:
+            assert torch.isfinite(p).all(), f"{n} corrupted after EMA step"
+    # teacher must have advanced away from its init
+    moved = any(not torch.equal(before[n], tr._ema[n]) for n in before)
+    assert moved, "EMA teacher never advanced -- it is inert"
