@@ -42,4 +42,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# No `-q` here on purpose. With it in addopts, a user typing `pytest -q` gets
+# `-qq`, which suppresses the final "N passed, M skipped" line -- so the test
+# count this project quotes in its docs could never be read off a default run.
+addopts = "--strict-markers"
+markers = [
+  "slow: needs a trained checkpoint or a long run; opt in with VSS_SLOW=1",
+]

@@ -496,6 +496,12 @@ class Trainer:
             "epochs_without_improvement": epochs_without_improvement,
         }
         tmp = path.with_suffix(".pt.tmp")
+        # `fit()` creates the checkpoint directory once at start-up, but a
+        # checkpoint can also be written long after that (the final save, or a
+        # resumed run whose directory was cleaned up meanwhile). torch.save does
+        # not create parents and fails with "Parent directory ... does not
+        # exist", which loses the run. Observed in a clean-checkout test run.
+        path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(payload, tmp)
         tmp.replace(path)
 

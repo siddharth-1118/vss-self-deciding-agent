@@ -23,6 +23,14 @@ data/raw/
 htmlcov/
 .DS_Store
 
+# local agent runtime scratch — never commit
+.freebuff/
+
+# local credentials — never commit
+.env
+.env.local
+.env.*.local
+
 # generated dataset split caches
 benchmarks/multi_question_value/_tmp_splits/
 data/multi_question_value/synthetic_goldtest.jsonl

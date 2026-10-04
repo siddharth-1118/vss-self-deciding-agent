@@ -46,7 +46,12 @@ result = model.decide(
   value on any declared scale).
 - **Calibrated confidence** — an auxiliary correctness head trained on
   empirical correctness, complemented by temperature scaling; evaluated
-  with ECE / Brier / NLL / reliability buckets.
+  with ECE / Brier / NLL / reliability buckets. Calibration is measured
+  **in-distribution**: on the real-data checkpoint, ECE on answered requests is
+  **0.122**, because the head's training target is the model's own correctness on
+  the training pass and it therefore learns to say "confident" on a distribution
+  it meets only at inference. See
+  [`docs/convergence_audit.md`](docs/convergence_audit.md) finding 8.
 - **Abstention** — `{"value": "ABSTAIN", "confidence": 0.31}` instead of a
   forced guess, via threshold or the trained abstain logit.
 - **Text AND JSON state** — deterministic canonical serialization of nested
@@ -119,6 +124,10 @@ is the plain classifier.
 Two further measured limitations: VSS's best checkpoint lands on the final epoch
 where it is not stopped early (its numbers are floors, not ceilings), and
 `ABSTAIN` is a confidence threshold rather than an out-of-distribution detector.
+On real data the confidence signal does separate out-of-scope input (AUROC
+0.807), but the operating point that catches most of it rejects **33%** of
+legitimate requests — a usable selective-prediction filter with published costs,
+not a dependable novelty gate (`docs/benchmark_report.md` §8).
 
 Gates, evidence and unresolved blockers:
 [`docs/release_readiness.md`](docs/release_readiness.md).
