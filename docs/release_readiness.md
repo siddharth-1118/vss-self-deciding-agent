@@ -170,6 +170,44 @@ behaviour is documented as a limitation in the model card, the benchmark report
 and the example itself, and pinned by
 `tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`.
 
+**Extended to real data for v0.1.0.** D27 was measured on the synthetic
+quick-start checkpoint. `scripts/eval_ood.py` now measures the same question on
+CLINC150's genuine 1000-utterance OOS test split, with the abstain threshold
+selected on the **validation** split only. That measurement found and fixed two
+defects in the *measurement code* first (see below), and its result is more
+nuanced than D27 alone:
+
+| quantity | value |
+|---|---:|
+| abstain logit, AUROC vs OOS | 0.6642 (chance 0.5) — **D27 stands** |
+| emitted confidence, AUROC vs OOS (test) | **0.8068** |
+| selective accuracy at validation-selected threshold | 0.7662 (vs 0.6229 unfiltered) |
+| false-abstention rate on in-scope traffic | **0.3309** |
+| OOS recall on test vs 0.90 selection target | 0.8010 |
+| ECE on answered in-scope | 0.1220 |
+
+So the model exposes a **usable selective-prediction signal** but does **not**
+ship a dependable OOD safeguard. Both model cards, the benchmark report (§8),
+the claims ledger (D27) and the README state it that way, and
+`tests/test_ood_metrics.py` fails the suite if any of them reintroduces a
+guarantee claim.
+
+Two defects were found *in the evaluation harness* while producing this, both
+now regression-tested:
+
+1. **OOS recall divided by the whole split instead of the OOS subset**
+   (`(is_oos & ~keep).mean()`). With 100 OOS among 3100 validation rows that
+   understated recall 31x — it reported 0.032 where the truth was 1.000, and
+   declared a reachable 90%-recall operating point *unreachable*. It would have
+   turned a working gate into a documented dead end.
+2. **`auroc` broke ties by array position** (`argsort().argsort()`), so a
+   perfectly uninformative score of four identical values reported 0.00 instead
+   of 0.50. Discrete confidence estimates tie constantly.
+
+A third, reporting-only defect: when the target operating point was declared
+unreachable the script printed `in-scope coverage -1.000`, because the fallback
+path never set the coverage it had chosen.
+
 ## Gate E — Claim integrity: **PASS**
 
 Every public claim in `docs/claims.md` carries one of **Supported /
@@ -225,11 +263,16 @@ domain.
    points at the stopping rule interacting with the LR schedule rather than at
    data or capacity. Until that is understood, no single VSS number should be
    quoted as expected performance.
-3. **Macro-F1, per-class error analysis and risk-coverage on real data are not
-   reported** — they exist only for the verified synthetic run.
-4. **OOD abstention does not work** (D27). A product limitation rather than a
-   release blocker, but binding on any out-of-domain deployment — an explicit
-   novelty gate is needed before one is attempted.
+3. **Macro-F1 and per-class error analysis on real data are still not
+   reported.** Risk-coverage *is* now measured on real data — `scripts/eval_ood.py`
+   emits it for the CLINC150 checkpoint (`benchmarks/ood/vss-clinc150-s13.json`),
+   along with coverage, selective accuracy and OOS AUROC.
+4. **There is no dependable OOD safeguard** (D27, extended to real data). The
+   confidence signal separates OOS at AUROC 0.807, but the operating point that
+   catches most OOS rejects 33% of legitimate traffic and still misses ~20% of
+   OOS. A product limitation rather than a release blocker, but binding on any
+   out-of-domain deployment — an explicit novelty gate is needed before one is
+   attempted.
 5. **VSS is behind the plain baseline on both real datasets** and the
    architectural cause is not identified. The CLINC150 symptom (peak at epoch 1,
    then degrade) is documented at three seeds but not explained. This is the main

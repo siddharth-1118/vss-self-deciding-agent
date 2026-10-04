@@ -267,7 +267,9 @@ is a starved-checkpoint artifact — with converged training that comparison wou
 need redoing. **Selective accuracy is never compared directly against an
 always-on model's accuracy**; both are reported at stated coverage and risk.
 
-## 8. Out-of-distribution abstention (measured, negative result)
+## 8. Out-of-distribution abstention (measured on real data)
+
+### 8a. The abstain *class* is not a novelty detector
 
 `benchmarks/convergence/ood_probe.py` on the verified quick-start checkpoint
 (`runs/smoke_verify/final`), full output in
@@ -279,8 +281,7 @@ always-on model's accuracy**; both are reported at stated coverage and risk.
 | word-scrambled (content destroyed) | 320 | 0.1062 | 0.8895 | 0.0997 |
 | foreign topic (fluent, off-domain) | 8 | **0.0000** | **0.9422** | 0.0000 |
 
-**The abstain head does not detect out-of-distribution input.** Three facts
-support that and none support the opposite:
+Three facts support that and none support the opposite:
 
 1. Shuffling every word of the message moved the abstain rate by 0.003
    (0.1031 → 0.1062). A novelty detector should respond strongly to that.
@@ -295,13 +296,64 @@ abstained at p=0.99 on a plausible support message, which looked like correct
 OOD behaviour, but a nonsense control answered confidently. The single example
 would have supported the wrong conclusion in both directions.
 
-Consequence: `ABSTAIN` is a confidence threshold, not a novelty alarm. Routing
-`ABSTAIN` to a human catches ordinary low-confidence cases while missing
-confidently-wrong unfamiliar ones. The limitation is binding on any deployment
-outside the training domain and is mirrored in `docs/model_card.md` (limitations
-and abstention semantics) and pinned by
-`tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`, which fails
-loudly if a future change makes detection work so the caveat cannot go stale.
+### 8b. But the *confidence* signal does separate OOS — at a cost
+
+D27 above is about the trained `ABSTAIN` class specifically. It is **not** a
+statement that the model has no usable out-of-distribution signal. Measured on
+the **CLINC150** real-data checkpoint (which ships 1000 genuine OOS utterances in
+its test split), via `scripts/eval_ood.py`; the abstain threshold is selected on
+the **validation** split only and the test split is never used to pick it.
+Artifact: `benchmarks/ood/vss-clinc150-s13.json`.
+
+| quantity | value |
+|---|---:|
+| in-scope accuracy, full 151-option schema, no abstention | 0.6229 |
+| **OOS detection AUROC** (confidence, in-scope vs OOS) | **0.8068** |
+| validation-selected threshold | 0.3595 |
+| in-scope coverage (answered) at that threshold | 0.6691 |
+| **selective accuracy** on answered in-scope | **0.7662** |
+| OOS abstention recall on test | 0.8010 |
+| false-abstention rate on in-scope | 0.3309 |
+| ECE on answered in-scope | 0.1220 |
+
+**This is a real signal, and it is not a safeguard.** Three costs are measured,
+not estimated:
+
+* **It generalises worse than it was selected.** The threshold was chosen on
+  validation to abstain on 90% of OOS; on test it abstains on **80.1%**. The
+  headline target does not survive the split change.
+* **It blocks a third of legitimate traffic.** 33.1% of *in-scope* requests are
+  gated out. A novelty gate that rejects one request in three is not
+  deployable without a human fallback.
+* **Calibration is poor on what it answers.** ECE 0.122 on answered in-scope
+  examples — confidence is usefully *ranked* but not trustworthy as a number.
+
+Decomposing the signal (validation split, AUROC in-scope vs OOS):
+
+| score used | AUROC |
+|---|---:|
+| `max_prob` | 0.8537 |
+| calibration head | 0.8551 |
+| `blend` (the default `confidence_mode`) | 0.8678 |
+| **`abstain_probability`** | **0.6642** |
+
+So the separation lives in the ordinary confidence path, and the trained abstain
+logit contributes almost nothing (0.664 against a 0.5 baseline) — which
+independently reproduces 8a on real data.
+
+**Consequence, stated precisely.** `ABSTAIN` is a confidence threshold, not a
+novelty alarm, and routing it to a human will catch ordinary low-confidence
+cases while missing confidently-wrong unfamiliar ones. A confidence-threshold
+novelty gate *is* constructible and its trade-off curve is published here, but
+it is an opt-in filter with a measured one-in-three false-rejection rate, not a
+replacement for a domain-specific gate. Any deployment outside the training
+domain needs an explicit novelty gate of its own.
+
+Pinned by `tests/test_ood_metrics.py` (metric correctness, honest infeasibility
+reporting, and a guard that fails if any release doc reintroduces an OOD
+guarantee claim) and `tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`
+(opt-in, fails loudly if the abstain head ever starts working on the synthetic
+probe).
 
 ## 9. Question isolation
 

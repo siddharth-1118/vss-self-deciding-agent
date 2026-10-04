@@ -39,8 +39,10 @@ def load_model(path: str):
     raw = raw.get("model", raw) if isinstance(raw, dict) else raw
     model = VSSModel(ModelConfig(**raw))
     model.load_state_dict(ck["model"])
-    vocab = Path("runs") / "tmp_vocab.json"  # fallback; prefer sibling dir
     tok_path = Path(path).parent / "final" / "vocab.json"
+    if not tok_path.exists():
+        raise SystemExit(f"vocab.json not found at {tok_path}; --model must point "
+                         "at a run directory's best.pt (vocab lives in <run>/final/)")
     model.tokenizer = VSSTokenizer.load(str(tok_path))
     model.vss_encoder.tokenizer = model.tokenizer
     model.eval()
@@ -68,11 +70,32 @@ def collect(model, examples, options):
 
 
 def auroc(scores_pos, scores_neg) -> float:
-    """Rank-based AUROC of P(pos scores > neg scores)."""
-    all_s = np.concatenate([scores_pos, scores_neg])
-    ranks = all_s.argsort().argsort().astype(np.float64) + 1.0
-    r_pos = ranks[: len(scores_pos)].sum()
+    """Rank-based AUROC of P(pos scores > neg scores).
+
+    Uses AVERAGE ranks for tied scores. Plain `argsort().argsort()` breaks ties
+    by position, which is arbitrary: four identical scores gave 0.00 instead of
+    the correct 0.50, i.e. a perfectly uninformative score would be reported as
+    perfectly anti-predictive. Discrete confidence estimates tie constantly, so
+    this materially changes the number.
+    """
+    all_s = np.concatenate([np.asarray(scores_pos, dtype=np.float64),
+                            np.asarray(scores_neg, dtype=np.float64)])
     n_pos, n_neg = len(scores_pos), len(scores_neg)
+    order = np.argsort(all_s, kind="mergesort")
+    sorted_s = all_s[order]
+    # average rank (1-based) per element
+    ranks_sorted = np.empty(len(all_s), dtype=np.float64)
+    i = 0
+    while i < len(all_s):
+        j = i
+        while j + 1 < len(all_s) and sorted_s[j + 1] == sorted_s[i]:
+            j += 1
+        avg = (i + j) / 2.0 + 1.0
+        ranks_sorted[i:j + 1] = avg
+        i = j + 1
+    ranks = np.empty(len(all_s), dtype=np.float64)
+    ranks[order] = ranks_sorted
+    r_pos = ranks[:n_pos].sum()
     return float((r_pos - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg))
 
 
@@ -101,6 +124,47 @@ def ece_at(conf_bin_pairs, n_bins: int = 15) -> float:
     return float(e)
 
 
+def select_threshold(conf: np.ndarray, is_oos: np.ndarray, target: float,
+                     correct: np.ndarray | None = None, n_cand: int = 40):
+    """Pick an abstain threshold using ONLY the validation split.
+
+    Among candidate thresholds that abstain on at least `target` of the OOS
+    examples, take the one with the highest in-scope coverage (answer as much
+    legitimate traffic as possible). The test split is never passed in.
+
+    Returns (threshold, in_scope_coverage, oos_recall, target_feasible,
+    tradeoff_rows). If no candidate reaches `target`, the most conservative
+    supported point is returned with feasible=False -- the shortfall is
+    reported, never papered over with an easier rule.
+    """
+    cand = np.quantile(conf, np.linspace(0.05, 0.99, n_cand))
+    inscope = ~is_oos
+    best_thr, best_cov, best_recall = None, -1.0, 0.0
+    trade = []
+    for thr in cand:
+        keep = conf >= thr
+        # Average over the OOS subset ONLY. Averaging over the whole split
+        # divides by n instead of n_oos and understates recall by the class
+        # ratio: it made 90% OOS recall look unreachable (0.03 vs 1.00) at a
+        # checkpoint where it is comfortably attained.
+        oos_recall = float((~keep)[is_oos].mean()) if is_oos.any() else 0.0
+        cov = float(keep[inscope].mean()) if inscope.any() else 0.0
+        kept = keep & inscope
+        kept_acc = (float(np.asarray(correct, dtype=bool)[kept].mean())
+                    if correct is not None and kept.any() else 0.0)
+        trade.append({"threshold": round(float(thr), 4),
+                      "oos_recall": round(oos_recall, 4),
+                      "inscope_coverage": round(cov, 4),
+                      "inscope_accuracy": round(kept_acc, 4)})
+        if oos_recall >= target and cov > best_cov:
+            best_thr, best_cov, best_recall = float(thr), cov, oos_recall
+    feasible = best_thr is not None
+    if feasible:
+        return best_thr, best_cov, best_recall, True, trade
+    pick = max(trade, key=lambda r: (r["oos_recall"], r["inscope_coverage"]))
+    return pick["threshold"], pick["inscope_coverage"], pick["oos_recall"], False, trade
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", required=True)
@@ -110,6 +174,10 @@ def main() -> int:
     ap.add_argument("--name", required=True)
     ap.add_argument("--out-dir", default="benchmarks/ood")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--target-oos-recall", type=float, default=0.90,
+                    help="validation-selected operating point must abstain on at "
+                         "least this fraction of OOS examples. If unreachable the "
+                         "run reports the best achievable instead of pretending.")
     args = ap.parse_args()
 
     options = sorted(json.loads(Path(args.labels).read_text()))
@@ -124,21 +192,11 @@ def main() -> int:
     v_is_oos = np.array([g == oos for g in vg])
     v_correct = np.array([p == g for p, g in zip(vp, vg)])
 
-    # threshold selected on VALIDATION: maximize selective accuracy on
-    # in-scope validation examples subject to abstaining on >=90% of OOS
-    cand = np.quantile(vc, np.linspace(0.05, 0.99, 40))
-    best_thr, best_cov = None, -1.0
-    for thr in cand:
-        keep = vc >= thr
-        oos_caught = float((v_is_oos & ~keep).mean()) if v_is_oos.any() else 0.0
-        inscope = ~v_is_oos
-        cov = float((keep & inscope).sum() / max(1, inscope.sum()))
-        if oos_caught >= 0.90 and cov > best_cov:
-            best_thr, best_cov = float(thr), cov
-    if best_thr is None:  # fall back: max accuracy point on validation
-        accs = [((vc >= t)[~v_is_oos] & v_correct[~v_is_oos]).mean() for t in cand]
-        best_thr = float(cand[int(np.argmax(accs))])
-    print(f"validation-selected abstain threshold: {best_thr:.4f} (in-scope coverage {best_cov:.3f})")
+    validation_threshold, best_cov, best_recall, target_feasible, trade = \
+        select_threshold(vc, v_is_oos, args.target_oos_recall, correct=v_correct)
+    print(f"validation-selected abstain threshold: {validation_threshold:.4f} "
+          f"(in-scope coverage {best_cov:.3f}, OOS recall {best_recall:.3f}, "
+          f"target {args.target_oos_recall:.2f} feasible={target_feasible})")
 
     tc, tp, tg = collect(model, test, options)
     t_is_oos = np.array([g == oos for g in tg])
@@ -153,7 +211,7 @@ def main() -> int:
     rc_points = [{"coverage": round(c, 4), "selective_accuracy": round(a, 4)}
                  for c, a in rc[:: max(1, len(rc) // 20)]]
 
-    thr = best_thr
+    thr = validation_threshold
     abstain = tc < thr
     answered = ~abstain
     sel_acc = float(t_correct[answered & ins].mean()) if (answered & ins).any() else None
@@ -172,6 +230,9 @@ def main() -> int:
         "inscope_accuracy_full_schema": round(inscope_acc, 4),
         "oos_detection_auroc": round(sep, 4),
         "validation_threshold": round(thr, 4),
+        "target_oos_recall": args.target_oos_recall,
+        "target_feasible": target_feasible,
+        "validation_tradeoff": trade[:: max(1, len(trade) // 12)],
         "coverage_inscope": round(coverage, 4),
         "selective_accuracy_inscope": round(sel_acc, 4) if sel_acc is not None else None,
         "oos_abstention_recall": round(oos_recall, 4),

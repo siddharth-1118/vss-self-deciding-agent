@@ -1,0 +1,185 @@
+{
+  "model": "runs/convergence/vss-clinc150-s13-lr0.0003-st2000-final/best.pt",
+  "protocol": "full official option schema; threshold from validation split; seed 42",
+  "n_test": 5500,
+  "n_inscope": 4500,
+  "n_oos": 1000,
+  "inscope_accuracy_full_schema": 0.6229,
+  "oos_detection_auroc": 0.8068,
+  "validation_threshold": 0.3595,
+  "target_oos_recall": 0.9,
+  "target_feasible": true,
+  "validation_tradeoff": [
+    {
+      "threshold": 0.1559,
+      "oos_recall": 0.35,
+      "inscope_coverage": 0.96,
+      "inscope_accuracy": 0.6156
+    },
+    {
+      "threshold": 0.2113,
+      "oos_recall": 0.54,
+      "inscope_coverage": 0.8913,
+      "inscope_accuracy": 0.6485
+    },
+    {
+      "threshold": 0.2557,
+      "oos_recall": 0.66,
+      "inscope_coverage": 0.8207,
+      "inscope_accuracy": 0.6844
+    },
+    {
+      "threshold": 0.2962,
+      "oos_recall": 0.83,
+      "inscope_coverage": 0.7517,
+      "inscope_accuracy": 0.7197
+    },
+    {
+      "threshold": 0.3456,
+      "oos_recall": 0.89,
+      "inscope_coverage": 0.679,
+      "inscope_accuracy": 0.7472
+    },
+    {
+      "threshold": 0.3887,
+      "oos_recall": 0.93,
+      "inscope_coverage": 0.606,
+      "inscope_accuracy": 0.775
+    },
+    {
+      "threshold": 0.4338,
+      "oos_recall": 0.95,
+      "inscope_coverage": 0.5317,
+      "inscope_accuracy": 0.8069
+    },
+    {
+      "threshold": 0.4886,
+      "oos_recall": 0.98,
+      "inscope_coverage": 0.458,
+      "inscope_accuracy": 0.8202
+    },
+    {
+      "threshold": 0.5718,
+      "oos_recall": 1.0,
+      "inscope_coverage": 0.384,
+      "inscope_accuracy": 0.8429
+    },
+    {
+      "threshold": 0.6529,
+      "oos_recall": 1.0,
+      "inscope_coverage": 0.3093,
+      "inscope_accuracy": 0.8858
+    },
+    {
+      "threshold": 0.7524,
+      "oos_recall": 1.0,
+      "inscope_coverage": 0.2347,
+      "inscope_accuracy": 0.9219
+    },
+    {
+      "threshold": 0.8192,
+      "oos_recall": 1.0,
+      "inscope_coverage": 0.16,
+      "inscope_accuracy": 0.925
+    },
+    {
+      "threshold": 0.8783,
+      "oos_recall": 1.0,
+      "inscope_coverage": 0.0853,
+      "inscope_accuracy": 0.9023
+    },
+    {
+      "threshold": 0.9372,
+      "oos_recall": 1.0,
+      "inscope_coverage": 0.0103,
+      "inscope_accuracy": 0.7097
+    }
+  ],
+  "coverage_inscope": 0.6691,
+  "selective_accuracy_inscope": 0.7662,
+  "oos_abstention_recall": 0.801,
+  "false_abstention_rate_inscope": 0.3309,
+  "ece_answered_inscope": 0.122,
+  "risk_coverage": [
+    {
+      "coverage": 0.0002,
+      "selective_accuracy": 1.0
+    },
+    {
+      "coverage": 0.0502,
+      "selective_accuracy": 0.9115
+    },
+    {
+      "coverage": 0.1002,
+      "selective_accuracy": 0.9202
+    },
+    {
+      "coverage": 0.1502,
+      "selective_accuracy": 0.9305
+    },
+    {
+      "coverage": 0.2002,
+      "selective_accuracy": 0.919
+    },
+    {
+      "coverage": 0.2502,
+      "selective_accuracy": 0.8996
+    },
+    {
+      "coverage": 0.3002,
+      "selective_accuracy": 0.8912
+    },
+    {
+      "coverage": 0.3502,
+      "selective_accuracy": 0.8813
+    },
+    {
+      "coverage": 0.4002,
+      "selective_accuracy": 0.8612
+    },
+    {
+      "coverage": 0.4502,
+      "selective_accuracy": 0.8504
+    },
+    {
+      "coverage": 0.5002,
+      "selective_accuracy": 0.8334
+    },
+    {
+      "coverage": 0.5502,
+      "selective_accuracy": 0.8158
+    },
+    {
+      "coverage": 0.6002,
+      "selective_accuracy": 0.7916
+    },
+    {
+      "coverage": 0.6502,
+      "selective_accuracy": 0.7744
+    },
+    {
+      "coverage": 0.7002,
+      "selective_accuracy": 0.7525
+    },
+    {
+      "coverage": 0.7502,
+      "selective_accuracy": 0.7284
+    },
+    {
+      "coverage": 0.8002,
+      "selective_accuracy": 0.7092
+    },
+    {
+      "coverage": 0.8502,
+      "selective_accuracy": 0.6871
+    },
+    {
+      "coverage": 0.9002,
+      "selective_accuracy": 0.669
+    },
+    {
+      "coverage": 0.9502,
+      "selective_accuracy": 0.6478
+    }
+  ]
+}

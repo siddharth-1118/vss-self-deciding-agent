@@ -24,7 +24,7 @@ accuracy claim is **Provisional** or **Withdrawn**. See
 | Latency advantage vs batched baseline | **Provisional** (single contended session) |
 | Selective prediction / risk-coverage | **Provisional** (synthetic only) |
 | Real-world generalisation from synthetic results | **Unsupported** — and now actively **disconfirmed**: the synthetic tie and the CLINC150 loss disagree in sign (D28) |
-| OOD / abstention detects unfamiliar input | **Withdrawn** — measured false; behaves like a ~10% prior (D27) |
+| OOD / abstention detects unfamiliar input | **Withdrawn** — the abstain class behaves like a ~10% prior (D27). The *confidence* signal does separate OOS (AUROC 0.807) but only at a measured one-in-three false-rejection rate; not a safeguard. |
 
 ---
 
@@ -431,11 +431,33 @@ would have supported the opposite conclusion to the truth, and the true
 conclusion only appeared once the two were measured side by side on 648 states.
 
 **Consequences.** `ABSTAIN` is documented as a confidence threshold, never a
-novelty alarm, in `docs/model_card.md` (limitations + abstention semantics) and
-`examples/basic.py`. Pinned by
+novelty alarm, in `docs/model_card.md` (limitations + abstention semantics),
+`MODEL_CARD.md`, and `examples/basic.py`. Pinned by
 `tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`, which fails
 if detection ever starts working so the caveat cannot silently go stale. Any
 deployment outside the training domain needs an explicit novelty gate.
+
+**Scope of this withdrawal (added after real-data measurement).** D27 was
+measured with the synthetic quick-start checkpoint and 8 foreign sentences. A
+follow-up on CLINC150 (`scripts/eval_ood.py`, 4500 in-scope / 1000 genuine OOS
+test utterances, threshold selected on validation only) separates two claims
+that are easy to conflate:
+
+| claim | measured | status |
+|---|---:|---|
+| the trained abstain class detects OOS | AUROC **0.664** (baseline 0.5) | **false** — withdrawal stands |
+| the emitted confidence separates OOS | AUROC **0.8068** test / 0.8678 validation | **true but partial** |
+
+At the validation-selected threshold, selective accuracy on answered in-scope
+requests is **0.7662** against a 0.6229 unfiltered baseline — confidence is
+genuinely informative. But the operating point costs **33.1% false
+abstention** on in-scope traffic, its OOS recall falls from 90% (the selection
+target) to **80.1%** on test, and ECE on what it answers is 0.122.
+
+So the honest statement is: **VSS exposes a usable, measurable confidence-based
+selective-prediction signal, and does not ship a dependable OOD safeguard.** The
+docs say exactly that; `tests/test_ood_metrics.py` fails the suite if any
+release document reintroduces a guarantee claim.
 
 This supersedes P2, which attributed the OOS-rejection numbers to trained
 abstention; those AUROC figures came from a different (real-data, pre-audit)

@@ -144,6 +144,18 @@ Read this table honestly rather than selectively:
    prior, not a novelty detector. Treat `ABSTAIN` as a confidence threshold to
    tune, never as evidence that input is unfamiliar. Pinned by
    `tests/test_ood_probe.py::test_abstain_head_is_not_an_ood_detector`.
+
+   **This is specific to the abstain *class*, not to confidence.** Measured on
+   CLINC150 (`scripts/eval_ood.py`; 4500 in-scope / 1000 genuine OOS test
+   utterances, threshold selected on validation only), the emitted confidence
+   *does* separate OOS — AUROC **0.8068**; the abstain logit alone reaches only
+   **0.664**. At the validation-selected threshold, selective accuracy is
+   0.7662 against a 0.6229 unfiltered baseline. But the operating point rejects
+   **33.1% of legitimate in-scope traffic**, its OOS recall falls from the 90%
+   selection target to **80.1%** on test, and ECE on answered examples is
+   0.122. So: a confidence-based selective-prediction signal exists and is
+   published; **a dependable OOD safeguard does not.** Pinned by
+   `tests/test_ood_metrics.py`.
 6. **No robustness guarantees for adversarial inputs.** Calibration is measured
    on in-distribution data only, and finding 5 above means it should not be
    assumed to transfer.
@@ -158,7 +170,7 @@ Read this table honestly rather than selectively:
 | risk | mitigation |
 |---|---|
 | Over-confident wrong answers | confidence + `ABSTAIN`; see abstention semantics below |
-| Unfamiliar input answered confidently | **Not mitigated.** Limitation 5: `ABSTAIN` does not detect OOD. Add an explicit novelty gate (embedding distance, retrieval, or a retrained abstention head) before deploying outside the training domain. |
+| Unfamiliar input answered confidently | **Partially mitigated, not solved.** Limitation 5: the abstain *class* does not detect OOS (AUROC 0.664), but emitted confidence does separate it (AUROC 0.807) at a measured 33% false-rejection rate on in-scope traffic. If you gate on confidence, calibrate the threshold on your own validation split and budget for the false-rejection rate; add an explicit novelty gate (embedding distance, retrieval, or a retrained abstention head) before deploying outside the training domain. |
 | Calibration drift on new domains | thresholds must be re-fitted per domain; never reuse a shipped threshold |
 | Silent schema errors | requests are strictly validated (`extra="forbid"`), malformed input returns 422 |
 | Benchmark over-reading | `docs/claims.md` marks each claim supported / provisional / withdrawn |
@@ -181,6 +193,11 @@ Read this table honestly rather than selectively:
   off-domain text. A caller that routes `ABSTAIN` to a human will therefore
   catch ordinary low-confidence cases while missing confidently-wrong
   unfamiliar ones.
+* **A confidence threshold is the only OOD-ish signal available, and it is a
+  blunt one.** On CLINC150, ranking by confidence separates OOS at AUROC 0.807,
+  but every operating point that catches most OOS also rejects a large fraction
+  of legitimate traffic (33% at the validation-selected point). Treat it as
+  selective prediction with published costs, not as a novelty alarm.
 
 ## Version
 
