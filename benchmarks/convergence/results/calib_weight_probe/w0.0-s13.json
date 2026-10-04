@@ -1,0 +1,28 @@
+{
+  "status": "complete",
+  "cell": "w0.0-s13",
+  "calibration_weight": 0.0,
+  "seed": 13,
+  "max_steps": 400,
+  "lr": 0.0003,
+  "batch_size": 32,
+  "steps_completed": 333,
+  "val_slice": 200,
+  "elapsed_sec": 226.8,
+  "train_loss_mean": 1.3495,
+  "train_loss_last": 1.2825,
+  "grad_norm_mean": 3.0046,
+  "grad_norm_max": 42.4299,
+  "param_update_rel_mean": 0.000129,
+  "n_updates": 333,
+  "train_components": {
+    "choice": 1.3495,
+    "calibration": 0.7182
+  },
+  "val_n": 200,
+  "val_accuracy": 0.465,
+  "val_macro_f1": 0.5117,
+  "val_ece": 0.1223,
+  "val_brier": 0.2189,
+  "val_mean_confidence": 0.3442
+}
