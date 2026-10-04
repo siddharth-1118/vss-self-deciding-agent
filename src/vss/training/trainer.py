@@ -20,7 +20,7 @@ import torch
 from ..data.schema import TrainingExample
 from ..model.config import VSSConfig
 from ..model.vss_model import VSSModel
-from .losses import combined_loss
+from .losses import combined_loss, correctness_targets
 from . import selection
 
 
@@ -118,6 +118,55 @@ class Trainer:
         else:
             tok = self.model.tokenizer
             assert isinstance(tok, VSSTokenizer)
+
+        # EMA teacher for calibration targets (D28). Only built when opted in;
+        # with the default "self" mode nothing extra is allocated or run.
+        self._ema: dict[str, torch.Tensor] | None = None
+        if getattr(self.tcfg, "calibration_target_mode", "self") == "ema":
+            self._ema = {
+                n: p.detach().clone()
+                for n, p in self.model.named_parameters()
+                if p.requires_grad
+            }
+
+    @torch.no_grad()
+    def _ema_correctness(
+        self, states: list[str], qs: list[list[dict]], targets: list[list[dict]]
+    ) -> list[float]:
+        """Per-row correctness under the EMA (previous-pass) model [D28 fix].
+
+        The EMA copy lags the live weights, so the calibration head is trained
+        against a distribution it does not itself define. This is the
+        structural fix the ledger called "identified but deliberately not
+        implemented".
+        """
+        assert self._ema is not None
+        decay = float(getattr(self.tcfg, "calibration_ema_decay", 0.99))
+        backup = {
+            n: p.detach().clone() for n, p in self.model.named_parameters()
+            if p.requires_grad
+        }
+        for n, p in self.model.named_parameters():
+            if p.requires_grad and n in self._ema:
+                p.copy_(self._ema[n])
+        was_training = self.model.training
+        self.model.eval()
+        try:
+            out = self.model(states, qs, device=self.device)
+        finally:
+            self.model.train(was_training)
+            for n, p in self.model.named_parameters():
+                if p.requires_grad and n in backup:
+                    p.copy_(backup[n])
+        rows = [r for g in out["per_example_rows"] for r in g]
+        flat_targets = [t for g in targets for t in g]
+        corr = correctness_targets(rows, flat_targets)
+        # advance the teacher toward the current weights for the next step
+        with torch.no_grad():
+            for n, p in self.model.named_parameters():
+                if p.requires_grad and n in self._ema:
+                    self._ema[n].mul_(decay).add_(p.detach(), alpha=1.0 - decay)
+        return corr
     # ---------------------------------------------------------------- train
     def train_epoch(
         self,
@@ -153,6 +202,16 @@ class Trainer:
             qs = [[q.as_request() for q in ex.questions] for ex in batch]
             targets = [build_targets(ex) for ex in batch]
 
+            # EMA targets FIRST: computing them swaps live weights in and out,
+            # which invalidates any graph built from the live forward pass.
+            # Doing it before the pass keeps the backward pass intact.
+            calib_targets = None
+            if (
+                self._ema is not None
+                and getattr(self.tcfg, "calibration_target_mode", "self") == "ema"
+            ):
+                calib_targets = self._ema_correctness(states, qs, targets)
+
             out = self.model(states, qs, device=self.device)
             flat_rows, flat_targets = [], []
             for row_group, tgt_group in zip(out["per_example_rows"], targets):
@@ -161,6 +220,7 @@ class Trainer:
             loss, parts = combined_loss(
                 flat_rows, flat_targets,
                 self.tcfg.loss_weights, self.tcfg.score_ordinal_weight,
+                calibration_targets=calib_targets,
             )
             (loss / self.tcfg.grad_accum).backward()
             if (global_step + 1) % self.tcfg.grad_accum == 0:

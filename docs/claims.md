@@ -418,6 +418,62 @@ replicates at three seeds**, and the stability asymmetry seen on Banking77
   would be a speculative change to what the model optimises. Seed-to-seed
   instability (sd 0.052 vs plain's 0.006) is likewise still unexplained.
 
+### D29. The calibration-target fix is now IMPLEMENTED (opt-in), not just identified
+The structural fix named in D28 now exists in code:
+`TrainingConfig.calibration_target_mode` (`"self"` | `"ema"`, default `"self"`
+so no existing config or checkpoint changes behaviour). Under `"ema"` the
+per-row P(correct) target is computed from a **detached exponential-moving-
+average copy of the model** — the previous pass — instead of the current
+forward pass, so the head is trained to predict correctness of a distribution
+it does not itself define. `combined_loss` accepts explicit
+`calibration_targets` and rejects a length mismatch rather than broadcasting.
+
+Status of the evidence: this is an **implementation** claim, not a performance
+claim. What is **Supported**: the mechanism exists, is opt-in, is
+regression-tested (`tests/test_calibration_target.py`, 5 tests, verified to
+fail when the fix is disabled), and the full suite passes (199 passed,
+1 skipped). What is **NOT yet claimed**: that it improves accuracy,
+calibration, or AUROC on real data — that requires the A/B run recorded in
+`benchmarks/convergence/results/calibration_ab.json`, which is a single seed
+on CLINC150 and must not be read as a ranking.
+
+Deliberately unchanged: the default stays `"self"`, so every existing
+checkpoint and config still reproduces its current numbers exactly.
+
+**The first A/B does NOT support the fix.** `benchmarks/convergence/
+results/calibration_ab.json` (CLINC150, seed 13, lr 3e-4, 150 steps, held-out
+400 choice rows; single seed, short budget — this probes the head only, not
+convergence):
+
+| mode | mean | std | frac >0.9 | frac >0.99 | accuracy | AUROC (P correct) |
+|---|---:|---:|---:|---:|---:|---:|
+| `self` (current) | 0.3065 | 0.0554 | 0.000 | 0.000 | 0.0575 | **0.5927** |
+| `ema` (fix) | 0.1282 | 0.0360 | 0.000 | 0.000 | 0.0250 | **0.1815** |
+
+Read honestly, this says two things and neither is what D28 predicted:
+
+1. **The saturation in D5 does not reproduce at this budget.** Neither arm
+   exceeds 0.9 on any row. At 150 steps the head sits near 0.13–0.31, not at
+   D5's 0.9916. D5 was measured on a *converged* checkpoint; an early-stopped
+   one does not show it. The defect this change targets was therefore not
+   observed here, so the fix could not be shown to remove it.
+2. **EMA targets made the P(correct) signal worse, not better** — AUROC
+   0.5927 → 0.1815, i.e. *worse than random*. The plausible cause is that a
+   lagging EMA teacher is systematically wrong about the live model's
+   correctness early in training, so the head is trained to predict a target
+   that anti-correlates with the outcome it is judged on.
+
+So: the code is implemented, tested and safe (default unchanged, full suite
+green), but **the hypothesis is not supported by this evidence** and the fix
+must not be claimed as an improvement. It stays opt-in and off. Next step
+would be a converged-budget run (2000 steps, matching D28's setting) before
+drawing any conclusion; a single short seed cannot settle it either way.
+
+**Correction to the framing above:** D28's own text warned this would be "a
+speculative change to what the model optimises". Implementing it and measuring
+was the right call — it produced a falsification, which is worth more than the
+speculation would have been.
+
 ### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
 **Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the
 verified quick-start checkpoint on 320 in-distribution, 320 word-scrambled and 8

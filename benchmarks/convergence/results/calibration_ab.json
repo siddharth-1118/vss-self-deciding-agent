@@ -1,0 +1,29 @@
+{
+  "dataset": "clinc150",
+  "seed": 13,
+  "lr": 0.0003,
+  "max_steps": 150,
+  "note": "single seed, 150 steps; probes head saturation only, NOT an accuracy ranking. EMA did not beat self here: AUROC 0.1815 vs 0.5927, and D5's saturation did not reproduce at this budget.",
+  "results": [
+    {
+      "mode": "self",
+      "n": 400,
+      "mean": 0.3065,
+      "std": 0.0554,
+      "frac_above_0.9": 0.0,
+      "frac_above_0.99": 0.0,
+      "accuracy": 0.0575,
+      "auroc_correctness": 0.5927
+    },
+    {
+      "mode": "ema",
+      "n": 400,
+      "mean": 0.1282,
+      "std": 0.036,
+      "frac_above_0.9": 0.0,
+      "frac_above_0.99": 0.0,
+      "accuracy": 0.025,
+      "auroc_correctness": 0.1815
+    }
+  ]
+}

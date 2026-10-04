@@ -93,6 +93,20 @@ class TrainingConfig:
         default_factory=lambda: {"choice": 1.0, "noul": 1.0, "score": 1.0}
     )
     score_ordinal_weight: float = 0.25
+    # Where the calibration head's P(correct) target comes from.
+    #   "self" - the model's own correctness on the CURRENT training forward
+    #             pass (the historical behaviour). This is what D28 diagnosed
+    #             as the cause of the head saturating near 1.0: the target is
+    #             computed from the very distribution being pushed toward it.
+    #   "ema"  - correctness of a detached exponential-moving-average copy of
+    #             the model, i.e. the PREVIOUS pass. The head is then trained
+    #             to predict correctness of a distribution it does not itself
+    #             define, which is what it must do at inference time.
+    # Default stays "self" so existing configs and checkpoints are unchanged;
+    # set "ema" to opt into the fix.
+    calibration_target_mode: Literal["self", "ema"] = "self"
+    # Decay for the EMA teacher used when calibration_target_mode == "ema".
+    calibration_ema_decay: float = 0.99
     log_every: int = 50
     eval_every: int = 300
     # optimizer steps between mid-epoch checkpoints. These carry the pinned

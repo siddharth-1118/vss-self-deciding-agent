@@ -82,6 +82,7 @@ def combined_loss(
     weights: dict[str, float],
     score_ordinal_weight: float = 0.25,
     calibration_weight: float = 1.0,
+    calibration_targets: list[float] | None = None,
 ) -> tuple[torch.Tensor, dict[str, float]]:
     """Sum weighted per-type losses across all question rows in the batch.
 
@@ -115,9 +116,22 @@ def combined_loss(
             parts["score"].append(s["huber"])
             parts["ordinal"].append(s["ordinal"])
 
-    # calibration head: BCE against empirical correctness of this pass [vss]
+    # Calibration head: BCE against empirical correctness. When the caller
+    # supplies `calibration_targets`, those come from an external source (an
+    # EMA teacher / previous pass) rather than this forward pass -- see D28,
+    # where deriving the target from the current pass drove the head to
+    # saturation (mean 0.9916, std 0.0134) because the target and the thing
+    # being pushed toward it are the same distribution.
     if calibration_weight > 0 and rows:
-        corr = correctness_targets(rows, targets)
+        if calibration_targets is not None:
+            if len(calibration_targets) != len(rows):
+                raise ValueError(
+                    f"calibration_targets has {len(calibration_targets)} entries "
+                    f"but there are {len(rows)} rows"
+                )
+            corr = list(calibration_targets)
+        else:
+            corr = correctness_targets(rows, targets)
         calib_probs = torch.stack([r["calibration"] for r in rows]).float().clamp(1e-6, 1 - 1e-6)
         calib_target = torch.tensor(corr, device=device).float()
         parts["calibration"].append(F.binary_cross_entropy(calib_probs, calib_target))
