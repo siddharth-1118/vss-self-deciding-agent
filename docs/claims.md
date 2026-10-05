@@ -474,6 +474,55 @@ speculative change to what the model optimises". Implementing it and measuring
 was the right call — it produced a falsification, which is worth more than the
 speculation would have been.
 
+### D30. Calibration-loss weight is NOT the cause of the seed instability — DEMONSTRATED (6 runs, early diagnostic)
+The leading suspect after D28 was the calibration term itself: it carries
+**full weight (1.0, equal to `choice`)** in the default `loss_weights`, and D28
+measured `comp_calibration` *rising* on validation (0.96 → 1.61) while its
+training counterpart fell to 0.014 — the shape of a term that memorises.
+If it were destabilising training, removing it should tighten the seed spread.
+
+Tested directly: CLINC150, seeds 7/13/21, calibration weight 1.0 vs 0.0,
+everything else fixed (LR 3e-4 constant with no scheduler, same split, config,
+batch size, evaluation on the same 200-row validation slice). The nominal
+400-step budget never engaged: the probe calls `train_epoch` once and one
+CLINC150 epoch is 333 batches (10625/32), so every cell completed exactly
+333 optimizer steps — the same budget in each cell, and a smaller one than
+the nominal 400.
+
+| calibration weight | val acc (s7/s13/s21) | mean | **sd** | macro-F1 | ECE | Brier | grad norm |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 1.0 | 0.500 / 0.500 / 0.605 | 0.5350 | **0.0495** | 0.5844 | 0.2085 | 0.2221 | 3.0165 |
+| 0.0 | 0.510 / 0.465 / 0.600 | 0.5250 | **0.0561** | 0.5730 | 0.1591 | 0.2159 | 2.9465 |
+
+**The hypothesis is refuted.**
+
+* Seed spread does **not** shrink — it is marginally *worse* with the term
+  removed (0.0495 → 0.0561). The difference is well inside single-seed noise at
+  n=3 and must not be read as a real widening either.
+* Mean accuracy is unchanged (0.535 → 0.525, i.e. nothing).
+* **Gradient norms are nearly identical** (3.0165 vs 2.9465, a 2.3% gap), so the
+  term does not dominate or destabilise the shared gradient either.
+* Relative parameter update per step is likewise flat (1.33e-4 vs 1.29e-4).
+
+**Consequence: calibration weight is deprioritised as the primary cause** of
+the sd 0.052-vs-0.006 instability in D28. Per the stated decision rule, the
+next suspects are learning-rate scheduling, initialisation, regularisation, and
+checkpoint selection.
+
+One genuine side-finding, recorded because it is the opposite of the
+motivation: removing the term **improved ECE (0.2085 → 0.1591)** and Brier
+(0.2221 → 0.2159) with no accuracy cost. That is consistent with D5/D28 — the
+head is close to uninformative (D5) while its loss term actively pushes
+confidence toward the training distribution. **This does not license changing
+the default**, and it is not a "turn it off" result: the shipped confidence
+signal is top-prob based (D5), not head-based, so removing this term would not
+remove a capability, but it is a single 400-step diagnostic and needs a longer
+controlled run before it means anything.
+
+Evidence: `benchmarks/convergence/results/calib_weight_probe/*.json`,
+harness `benchmarks/convergence/calib_weight_probe.py` (resumable; a cell with
+no `status: complete` JSON is never counted).
+
 ### D27. ~~VSS abstains on out-of-distribution input~~ — WITHDRAWN, measured false
 **Do not claim OOD detection.** `benchmarks/convergence/ood_probe.py` scored the
 verified quick-start checkpoint on 320 in-distribution, 320 word-scrambled and 8

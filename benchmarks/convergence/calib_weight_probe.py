@@ -6,9 +6,11 @@ seed instability on CLINC150 (ledger D28: VSS sd 0.052 vs plain 0.006).
 Matrix: calibration weight in {1.0, 0.0} x seeds {7, 13, 21}. Everything else
 is held fixed: same split, config, LR, batch size, step budget, evaluation.
 
-Deliberately NOT a convergence study. 400 steps is roughly 2 epochs on
-CLINC150; the only claims licensed here are about early trajectory and
-seed-to-seed spread, never about final accuracy.
+Deliberately NOT a convergence study. The probe calls `train_epoch` once, and
+one CLINC150 epoch is 333 batches (10625 examples / batch 32), so every cell
+completes 333 optimizer steps -- the nominal 400-step `max_steps` cap is set in
+config but never engages. The only claims licensed here are about early
+trajectory and seed-to-seed spread, never about final accuracy.
 
 Resume: each cell writes its own JSON. A cell whose JSON exists and carries
 `"status": "complete"` is skipped. A cell that dies mid-run leaves no JSON and
